@@ -18,6 +18,14 @@ Je mag de bestanden op twee manieren aanbieden:
 
 De tool detecteert automatisch welke variant aanwezig is.
 
+Contactbestand verwacht velden volgens KBO-schema:
+- `EntityNumber` (ondernemingsnummer of vestigingsnummer)
+- `EntityContact` (`ENT` of `EST`)
+- `ContactType` (`TEL`, `EMAIL`, `WEB`, ...)
+- `Value` (de effectieve waarde)
+
+`EntityNumber` wordt genormaliseerd naar digits-only (punten/quotes verwijderd). Bij `EntityContact=EST` wordt het vestigingsnummer via `establishments.csv` gemapt naar het ondernemingsnummer.
+
 > Verwacht CSV met `;` als delimiter (KBO-stijl). De CLI detecteert automatisch delimiter en leest ook komma-CSV indien nodig.
 
 Voorbeeld:
@@ -83,6 +91,7 @@ python -m src.cli --input data/raw/2026-02-18 --output data/processed/leads_nino
 - `no_nace` wanneer geen NACE-code aanwezig is (`-5`)
 - `has_phone` wanneer telefoon aanwezig is (`+5`)
 - `has_email` wanneer email aanwezig is (`+3`)
+- `has_website` wanneer website aanwezig is (informatieve reden, geen extra punten)
 
 ## 6) Outputlocaties
 
