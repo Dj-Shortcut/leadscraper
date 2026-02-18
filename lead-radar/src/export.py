@@ -18,6 +18,8 @@ OUTPUT_COLUMNS = [
     "nace_codes",
     "sector_bucket",
     "has_website",
+    "phone",
+    "email",
     "score_total",
     "score_reasons",
     "source_files_version",

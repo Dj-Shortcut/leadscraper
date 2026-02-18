@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+import re
+import unicodedata
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterator
@@ -66,6 +68,18 @@ def read_csv(path: Path) -> list[dict[str, str]]:
     return list(iter_csv_rows(path))
 
 
+def normalize_key(name: str) -> str:
+    value = unicodedata.normalize("NFKD", str(name))
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
+    value = re.sub(r"[^a-z0-9]+", "_", value.strip().lower())
+    value = re.sub(r"_+", "_", value)
+    return value.strip("_")
+
+
+def normalize_row_keys(row: dict[str, str]) -> dict[str, str]:
+    return {normalize_key(key): value for key, value in row.items()}
+
+
 def find_input_file(input_dir: Path, candidates: list[str]) -> Path:
     for candidate in candidates:
         candidate_path = input_dir / candidate
@@ -98,6 +112,46 @@ def detect_input_dir(input_dir: Path) -> Path:
     return input_dir
 
 
+def load_contacts_by_enterprise(input_dir: Path, establishments: list[dict[str, str]]) -> dict[str, dict[str, str]]:
+    try:
+        contacts_file = find_input_file(input_dir, ["contacts.csv", "contact.csv"])
+    except FileNotFoundError:
+        return {}
+
+    establishment_to_enterprise: dict[str, str] = {}
+    for row in establishments:
+        normalized_row = normalize_row_keys(row)
+        establishment_number = (normalized_row.get("establishment_number") or "").strip()
+        enterprise_number = (normalized_row.get("enterprise_number") or "").strip()
+        if establishment_number and enterprise_number:
+            establishment_to_enterprise[establishment_number] = enterprise_number
+
+    contacts_by_enterprise: dict[str, dict[str, str]] = {}
+    for raw_row in iter_csv_rows(contacts_file):
+        row = normalize_row_keys(raw_row)
+        enterprise_number = (row.get("enterprise_number") or "").strip()
+        if not enterprise_number:
+            establishment_number = (row.get("establishment_number") or "").strip()
+            enterprise_number = establishment_to_enterprise.get(establishment_number, "")
+
+        if not enterprise_number:
+            continue
+
+        phone = (row.get("phone") or "").strip()
+        email = (row.get("email") or "").strip()
+        if not phone and not email:
+            continue
+
+        existing = contacts_by_enterprise.get(enterprise_number, {"phone": "", "email": ""})
+        if phone and not existing["phone"]:
+            existing["phone"] = phone
+        if email and not existing["email"]:
+            existing["email"] = email
+        contacts_by_enterprise[enterprise_number] = existing
+
+    return contacts_by_enterprise
+
+
 def months_since(start_date: str) -> int:
     started = datetime.strptime(start_date, "%Y-%m-%d").date()
     today = date.today()
@@ -115,6 +169,8 @@ def score_record(
     age_months: int,
     sector_bucket: str,
     has_nace: bool,
+    has_phone: bool,
+    has_email: bool,
     max_months: int,
 ) -> tuple[int, str]:
     score = 0
@@ -132,6 +188,14 @@ def score_record(
         score -= 5
         reasons.append("no_nace")
 
+    if has_phone:
+        score += 5
+        reasons.append("has_phone")
+
+    if has_email:
+        score += 3
+        reasons.append("has_email")
+
     score = max(0, min(100, score))
     return score, "|".join(reasons)
 
@@ -142,13 +206,14 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
     enterprises = read_csv(find_input_file(resolved_input_dir, ["enterprises.csv", "enterprise.csv"]))
     establishments = read_csv(find_input_file(resolved_input_dir, ["establishments.csv", "establishment.csv"]))
     activities = read_csv(find_input_file(resolved_input_dir, ["activities.csv", "activity.csv"]))
+    contacts_by_enterprise = load_contacts_by_enterprise(resolved_input_dir, establishments)
 
     establishment_by_enterprise = {
         row["enterprise_number"].strip(): row for row in establishments if row.get("enterprise_number", "").strip()
     }
 
     activities_by_enterprise: dict[str, list[str]] = {}
-    for row in iter_csv_rows(input_dir / "activities.csv"):
+    for row in iter_csv_rows(find_input_file(resolved_input_dir, ["activities.csv", "activity.csv"])):
         enterprise_number = row.get("enterprise_number", "").strip()
         nace_code = row.get("nace_code", "").strip()
         if enterprise_number and nace_code:
@@ -160,6 +225,7 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
     for enterprise in enterprises:
         enterprise_number = enterprise.get("enterprise_number", "").strip()
         est = establishment_by_enterprise.get(enterprise_number, {})
+        contact = contacts_by_enterprise.get(enterprise_number, {"phone": "", "email": ""})
 
         postal_code = (est.get("postal_code") or enterprise.get("postal_code") or "").strip()
         start_date = enterprise.get("start_date", "").strip()
@@ -176,11 +242,15 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
         sector_bucket = bucket_from_nace(first_nace_code)
         website = (enterprise.get("website") or "").strip()
         has_website = bool(website)
+        phone = contact["phone"]
+        email = contact["email"]
 
         score_total, score_reasons = score_record(
             age_months=age_months,
             sector_bucket=sector_bucket,
             has_nace=bool(nace_codes),
+            has_phone=bool(phone),
+            has_email=bool(email),
             max_months=max_months,
         )
 
@@ -195,6 +265,8 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
             "nace_codes": ",".join(nace_codes),
             "sector_bucket": sector_bucket,
             "has_website": "yes" if has_website else "no",
+            "phone": phone,
+            "email": email,
             "score_total": score_total,
             "score_reasons": score_reasons,
             "source_files_version": source_version,

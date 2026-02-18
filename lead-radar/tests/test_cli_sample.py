@@ -24,6 +24,8 @@ def test_pipeline_runs_on_sample_and_writes_output(tmp_path: Path) -> None:
     assert output_path.exists()
     content = output_path.read_text(encoding="utf-8")
     assert "enterprise_number" in content
+    assert "phone" in content
+    assert "email" in content
 
 
 def test_read_csv_supports_comma_delimiter(tmp_path: Path) -> None:
@@ -71,7 +73,7 @@ def test_build_records_detects_single_subfolder_with_csv_files(tmp_path: Path, c
         encoding="utf-8",
     )
     (detected / "activity.csv").write_text(
-        "enterprise_number;nace_code\n0123456789;96021\n",
+        "enterprise_number;nace_code\n0123456789;96.02\n",
         encoding="utf-8",
     )
 
@@ -81,3 +83,57 @@ def test_build_records_detects_single_subfolder_with_csv_files(tmp_path: Path, c
     assert "Detected subfolder" in captured.out
     assert len(records) == 1
     assert records[0]["source_files_version"] == "2026-02-18"
+
+
+def test_build_records_enriches_phone_and_email_when_contacts_exists(tmp_path: Path) -> None:
+    (tmp_path / "enterprises.csv").write_text(
+        "enterprise_number;name;status;start_date;postal_code;city\n"
+        "0123456789;Acme;ACTIVE;2026-01-01;9400;Ninove\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "establishments.csv").write_text(
+        "enterprise_number;establishment_number;address;postal_code;city\n"
+        "0123456789;2.987.654.321;Main street 1;9400;Ninove\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "activities.csv").write_text(
+        "enterprise_number;nace_code\n0123456789;96.02\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "contact.csv").write_text(
+        "establishment_number;phone;email\n"
+        "2.987.654.321;+32123456789;hello@acme.example\n",
+        encoding="utf-8",
+    )
+
+    records = build_records(tmp_path, selected_postcodes={"9400"}, max_months=18)
+
+    assert len(records) == 1
+    assert records[0]["phone"] == "+32123456789"
+    assert records[0]["email"] == "hello@acme.example"
+    assert records[0]["score_total"] == 53
+    assert "has_phone" in records[0]["score_reasons"]
+    assert "has_email" in records[0]["score_reasons"]
+
+
+def test_build_records_without_contacts_file_falls_back_gracefully(tmp_path: Path) -> None:
+    (tmp_path / "enterprises.csv").write_text(
+        "enterprise_number;name;status;start_date;postal_code;city\n"
+        "0123456789;Acme;ACTIVE;2026-01-01;9400;Ninove\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "establishments.csv").write_text(
+        "enterprise_number;address;postal_code;city\n"
+        "0123456789;Main street 1;9400;Ninove\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "activities.csv").write_text(
+        "enterprise_number;nace_code\n0123456789;96.02\n",
+        encoding="utf-8",
+    )
+
+    records = build_records(tmp_path, selected_postcodes={"9400"}, max_months=18)
+
+    assert len(records) == 1
+    assert records[0]["phone"] == ""
+    assert records[0]["email"] == ""
