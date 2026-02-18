@@ -1,5 +1,6 @@
 enterprise_number;name;status;start_date;address;postal_code;city;website
 0123.456.789;Ninove Coffee House;ACTIVE;2025-07-15;Oudstrijdersplein 3;9400;Ninove;
-0234.567.891;Tech Repair Aalst;ACTIVE;2024-11-02;Molenstraat 12;9300;Aalst;https://techrepair.example
+0234.567.891;Tech Repair Aalst;ACTIVE;2022-11-02;Molenstraat 12;9300;Aalst;https://techrepair.example
 0345.678.912;Studio Flora;ACTIVE;2025-02-20;Stationsstraat 45;9400;Ninove;
 0456.789.123;Bakkerij De Brug;INACTIVE;2025-01-10;Kerkstraat 18;9450;Haaltert;
+0567.891.234;Gezondheidspraktijk Dender;ACTIVE;2024-12-01;Denderstraat 10;9402;Ninove;https://gezond.example

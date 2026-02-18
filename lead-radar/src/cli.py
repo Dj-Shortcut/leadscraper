@@ -8,6 +8,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from .config import TARGET_POSTCODES
 from .export import export_leads
 from .transform import bucket_from_nace
 from .validate import validate_record
@@ -26,13 +27,13 @@ def parse_args() -> argparse.Namespace:
 
 def detect_delimiter(path: Path, fallback: str = ";") -> str:
     with path.open("r", encoding="utf-8", newline="") as handle:
-        sample = handle.read(5_000)
+        sample = handle.read(4_096)
 
     if not sample:
         return fallback
 
     try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=";,\t,")
+        dialect = csv.Sniffer().sniff(sample, delimiters=";,\t")
         return str(dialect.delimiter)
     except csv.Error:
         return fallback
@@ -51,11 +52,13 @@ def months_since(start_date: str) -> int:
 
 
 def parse_postcodes(raw: str) -> set[str]:
-    return {item.strip() for item in raw.split(",") if item.strip()}
+    parsed = {item.strip() for item in raw.split(",") if item.strip()}
+    if parsed:
+        return parsed
+    return set(TARGET_POSTCODES)
 
 
 def score_record(
-    status: str,
     age_months: int,
     sector_bucket: str,
     has_nace: bool,
@@ -66,19 +69,15 @@ def score_record(
 
     if age_months <= max_months:
         score += 30
-        reasons.append("new<18m;+30")
+        reasons.append("new<18m")
 
     if sector_bucket in {"beauty", "horeca", "health"}:
-        score += 30
-        reasons.append("sector;+30")
+        score += 15
+        reasons.append("sector_high")
 
     if not has_nace:
         score -= 5
-        reasons.append("missing_nace;-5")
-
-    if status.upper() == "ACTIVE":
-        score += 10
-        reasons.append("active_status;+10")
+        reasons.append("no_nace")
 
     score = max(0, min(100, score))
     return score, "|".join(reasons)
@@ -124,7 +123,6 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
         has_website = bool(website)
 
         score_total, score_reasons = score_record(
-            status=enterprise.get("status", ""),
             age_months=age_months,
             sector_bucket=sector_bucket,
             has_nace=bool(nace_codes),
