@@ -20,6 +20,13 @@ from .validate import validate_record
 LOGGER = logging.getLogger(__name__)
 LARGE_CSV_WARNING_BYTES = 1_000_000_000
 
+INPUT_FILE_CANDIDATES: dict[str, list[str]] = {
+    "enterprise": ["enterprises.csv", "enterprise.csv"],
+    "establishment": ["establishments.csv", "establishment.csv"],
+    "activity": ["activities.csv", "activity.csv"],
+    "contact": ["contacts.csv", "contact.csv"],
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Lead Radar CSV pipeline")
@@ -29,17 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--months", type=int, default=18, help="Maximale leeftijd in maanden")
     parser.add_argument("--min-score", type=int, default=40, help="Minimale score voor output")
     parser.add_argument("--limit", type=int, default=200, help="Maximum records in output")
-    parser.add_argument(
-        "--max-bad-lines",
-        type=int,
-        default=1000,
-        help="Maximum aantal corrupte CSV-lijnen dat overgeslagen mag worden",
-    )
-    parser.add_argument(
-        "--encoding",
-        default="utf-8-sig",
-        help="CSV encoding override (fallback naar latin-1 bij decodefouten)",
-    )
+    parser.add_argument("--verbose", action="store_true", help="Toon detectie-info over inputbestanden")
     return parser.parse_args()
 
 
@@ -182,6 +179,11 @@ def find_input_file(input_dir: Path, candidates: list[str]) -> Path:
         if candidate_path.is_file():
             return candidate_path
 
+    for candidate in candidates:
+        doubled_extension = input_dir / f"{candidate}.csv"
+        if doubled_extension.is_file():
+            return doubled_extension
+
     found_entries = sorted(item.name for item in input_dir.iterdir()) if input_dir.exists() else []
     expected = ", ".join(candidates)
     found = ", ".join(found_entries) if found_entries else "(geen bestanden gevonden)"
@@ -189,6 +191,13 @@ def find_input_file(input_dir: Path, candidates: list[str]) -> Path:
         f"Geen geldig inputbestand gevonden in '{input_dir}'. "
         f"Verwacht één van: {expected}. Gevonden: {found}."
     )
+
+
+def _format_detected_files(input_dir: Path) -> str:
+    entries = sorted(item.name for item in input_dir.iterdir()) if input_dir.exists() else []
+    if not entries:
+        return "Detected files: (geen bestanden gevonden)"
+    return f"Detected files: {', '.join(entries)}"
 
 
 def detect_input_dir(input_dir: Path) -> Path:
@@ -216,7 +225,7 @@ def load_contacts_by_enterprise(
     max_bad_lines: int,
 ) -> dict[str, dict[str, str]]:
     try:
-        contacts_file = find_input_file(input_dir, ["contacts.csv", "contact.csv"])
+        contacts_file = find_input_file(input_dir, INPUT_FILE_CANDIDATES["contact"])
     except FileNotFoundError:
         return {}
 
@@ -302,48 +311,22 @@ def score_record(
     return score, "|".join(reasons)
 
 
-def build_records(
-    input_dir: Path,
-    selected_postcodes: set[str],
-    max_months: int,
-    *,
-    encoding: str = "utf-8-sig",
-    max_bad_lines: int = 1000,
-) -> list[dict[str, Any]]:
+def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int, verbose: bool = False) -> list[dict[str, Any]]:
     resolved_input_dir = detect_input_dir(input_dir)
+    if verbose:
+        print(_format_detected_files(resolved_input_dir))
 
-    enterprises = read_csv(
-        find_input_file(resolved_input_dir, ["enterprises.csv", "enterprise.csv"]),
-        encoding=encoding,
-        max_bad_lines=max_bad_lines,
-    )
-    establishments = read_csv(
-        find_input_file(resolved_input_dir, ["establishments.csv", "establishment.csv"]),
-        encoding=encoding,
-        max_bad_lines=max_bad_lines,
-    )
-    activities = read_csv(
-        find_input_file(resolved_input_dir, ["activities.csv", "activity.csv"]),
-        encoding=encoding,
-        max_bad_lines=max_bad_lines,
-    )
-    contacts_by_enterprise = load_contacts_by_enterprise(
-        resolved_input_dir,
-        establishments,
-        encoding=encoding,
-        max_bad_lines=max_bad_lines,
-    )
+    enterprises = read_csv(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["enterprise"]))
+    establishments = read_csv(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["establishment"]))
+    activities = read_csv(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["activity"]))
+    contacts_by_enterprise = load_contacts_by_enterprise(resolved_input_dir, establishments)
 
     establishment_by_enterprise = {
         row["enterprise_number"].strip(): row for row in establishments if row.get("enterprise_number", "").strip()
     }
 
     activities_by_enterprise: dict[str, list[str]] = {}
-    for row in iter_csv_rows(
-        find_input_file(resolved_input_dir, ["activities.csv", "activity.csv"]),
-        encoding=encoding,
-        max_bad_lines=max_bad_lines,
-    ):
+    for row in iter_csv_rows(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["activity"])):
         enterprise_number = row.get("enterprise_number", "").strip()
         nace_code = row.get("nace_code", "").strip()
         if enterprise_number and nace_code:
@@ -417,8 +400,7 @@ def main() -> None:
         input_dir=input_dir,
         selected_postcodes=selected_postcodes,
         max_months=args.months,
-        encoding=args.encoding,
-        max_bad_lines=args.max_bad_lines,
+        verbose=args.verbose,
     )
     total_records = len(records)
 
