@@ -83,6 +83,8 @@ python -m src.cli   --input data/raw   --input-drive-zip "https://drive.google.c
 
 > Google Sheets upload vereist service-account credentials via env var `GOOGLE_SERVICE_ACCOUNT_JSON` en package `gspread`.
 
+`resolve_input_dir(args)` returnt altijd het effectieve inputpad voor de pipeline: bij succesvolle `--input-drive-zip` verwerking is dat `--download-dir/extracted`; zonder Drive ZIP of bij download/extract-fallback is dat `--input`.
+
 ## 4) Sector bucketing
 
 `sector_bucket` komt uit `bucket_from_nace()` met deze buckets:

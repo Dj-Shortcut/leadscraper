@@ -59,6 +59,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def resolve_input_dir(args: argparse.Namespace) -> Path:
+    """Resolve the input directory for the pipeline.
+
+    Returns the path to the extracted Drive ZIP directory when
+    ``--input-drive-zip`` is provided and download/extract succeeds.
+    Falls back to ``--input`` when Drive handling raises ``OSError`` and the
+    local input directory exists.
+    """
     if not args.input_drive_zip:
         return Path(args.input)
 
