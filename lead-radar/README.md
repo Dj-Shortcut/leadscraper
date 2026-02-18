@@ -27,17 +27,15 @@ cp ~/Downloads/activities.csv data/raw/2026-02-18/
 De repository bevat fake testdata in `data/sample/`, zodat je de pipeline lokaal kan draaien zonder echte dump.
 
 ```bash
-python -m src.cli \
-  --input data/sample \
-  --output data/processed/sample_leads.csv
+python -m src.cli --input data/sample --output data/processed/sample_leads.csv
 ```
 
 ## 3) CLI-commando's
 
-Standaardcommand:
+Real run:
 
 ```bash
-python -m src.cli --input data/raw/2026-02-18 --output data/processed/leads_ninove.csv
+python -m src.cli --input data/raw --output data/processed/leads_ninove.csv --min-score 40
 ```
 
 Met filters:
@@ -66,10 +64,9 @@ python -m src.cli \
 
 `score_reasons` gebruikt `|` als separator.
 
-- `new<18m;+30` wanneer startdatum binnen `--months` valt
-- `sector;+30` wanneer `sector_bucket` in `{beauty, horeca, health}` zit
-- `missing_nace;-5` wanneer geen NACE-code aanwezig is
-- `active_status;+10` bonus wanneer status `ACTIVE` is
+- `new<18m` wanneer startdatum binnen `--months` valt (`+30`)
+- `sector_high` wanneer `sector_bucket` in `{beauty, horeca, health}` zit (`+15`)
+- `no_nace` wanneer geen NACE-code aanwezig is (`-5`)
 
 ## 6) Outputlocaties
 

@@ -6,4 +6,4 @@ __pycache__/
 
 data/raw/**
 data/processed/**
-!data/sample/**/*.csv
+!data/sample/**
