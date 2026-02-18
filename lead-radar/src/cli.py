@@ -36,6 +36,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--months", type=int, default=18, help="Maximale leeftijd in maanden")
     parser.add_argument("--min-score", type=int, default=40, help="Minimale score voor output")
     parser.add_argument("--limit", type=int, default=200, help="Maximum records in output")
+    parser.add_argument(
+        "--lite",
+        action="store_true",
+        help="Lite mode: skip activities.csv/NACE verwerking en bouw leads op basis van identiteit + contact",
+    )
     parser.add_argument("--verbose", action="store_true", help="Toon detectie-info over inputbestanden")
     return parser.parse_args()
 
@@ -225,8 +230,8 @@ def load_contacts_by_enterprise(
     input_dir: Path,
     establishments: list[dict[str, str]],
     *,
-    encoding: str,
-    max_bad_lines: int,
+    encoding: str = "utf-8-sig",
+    max_bad_lines: int = 1000,
 ) -> dict[str, dict[str, str]]:
     try:
         contacts_file = find_input_file(input_dir, INPUT_FILE_CANDIDATES["contact"])
@@ -338,14 +343,20 @@ def score_record(
     return score, "|".join(reasons)
 
 
-def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int, verbose: bool = False) -> list[dict[str, Any]]:
+def build_records(
+    input_dir: Path,
+    selected_postcodes: set[str],
+    max_months: int,
+    *,
+    verbose: bool = False,
+    lite: bool = False,
+) -> list[dict[str, Any]]:
     resolved_input_dir = detect_input_dir(input_dir)
     if verbose:
         print(_format_detected_files(resolved_input_dir))
 
     enterprises = read_csv(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["enterprise"]))
     establishments = read_csv(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["establishment"]))
-    activities = read_csv(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["activity"]))
     contacts_by_enterprise = load_contacts_by_enterprise(resolved_input_dir, establishments)
 
     establishment_by_enterprise = {
@@ -355,11 +366,13 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
     }
 
     activities_by_enterprise: dict[str, list[str]] = {}
-    for row in iter_csv_rows(find_input_file(resolved_input_dir, ["activities.csv", "activity.csv"])):
-        enterprise_number = normalize_identifier(row.get("enterprise_number", ""))
-        nace_code = row.get("nace_code", "").strip()
-        if enterprise_number and nace_code:
-            activities_by_enterprise.setdefault(enterprise_number, []).append(nace_code)
+    if not lite:
+        for row in iter_csv_rows(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["activity"])):
+            normalized_row = normalize_row_keys(row)
+            enterprise_number = normalize_identifier(normalized_row.get("enterprise_number", ""))
+            nace_code = (normalized_row.get("nace_code") or "").strip()
+            if enterprise_number and nace_code:
+                activities_by_enterprise.setdefault(enterprise_number, []).append(nace_code)
 
     source_version = resolved_input_dir.name
     records: list[dict[str, Any]] = []
@@ -382,23 +395,34 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
         if selected_postcodes and not in_postcode_set:
             continue
 
-        nace_codes = activities_by_enterprise.get(enterprise_number, [])
+        nace_codes = activities_by_enterprise.get(enterprise_number, []) if not lite else []
         first_nace_code = nace_codes[0] if nace_codes else None
-        sector_bucket = bucket_from_nace(first_nace_code)
+        sector_bucket = bucket_from_nace(first_nace_code) if not lite else ""
         website = contact["website"] or (enterprise.get("website") or "").strip()
         has_website = bool(website)
         phone = contact["phone"]
         email = contact["email"]
 
-        score_total, score_reasons = score_record(
-            age_months=age_months,
-            sector_bucket=sector_bucket,
-            has_nace=bool(nace_codes),
-            has_phone=bool(phone),
-            has_email=bool(email),
-            has_website=has_website,
-            max_months=max_months,
-        )
+        if lite:
+            score_total = 0
+            lite_reasons = ["lite_mode"]
+            if phone:
+                lite_reasons.append("has_phone")
+            if email:
+                lite_reasons.append("has_email")
+            if has_website:
+                lite_reasons.append("has_website")
+            score_reasons = "|".join(lite_reasons)
+        else:
+            score_total, score_reasons = score_record(
+                age_months=age_months,
+                sector_bucket=sector_bucket,
+                has_nace=bool(nace_codes),
+                has_phone=bool(phone),
+                has_email=bool(email),
+                has_website=has_website,
+                max_months=max_months,
+            )
 
         record = {
             "enterprise_number": enterprise_number,
@@ -408,7 +432,7 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
             "address": (est.get("address") or enterprise.get("address") or "").strip(),
             "postal_code": postal_code,
             "city": (est.get("city") or enterprise.get("city") or "").strip(),
-            "nace_codes": ",".join(nace_codes),
+            "nace_codes": ",".join(nace_codes) if not lite else "",
             "sector_bucket": sector_bucket,
             "has_website": "yes" if has_website else "no",
             "website": website,
@@ -435,10 +459,12 @@ def main() -> None:
         selected_postcodes=selected_postcodes,
         max_months=args.months,
         verbose=args.verbose,
+        lite=args.lite,
     )
     total_records = len(records)
 
-    filtered = [row for row in records if int(row["score_total"]) >= args.min_score]
+    min_score = 0 if args.lite else args.min_score
+    filtered = [row for row in records if int(row["score_total"]) >= min_score]
     if args.limit > 0:
         filtered = filtered[: args.limit]
 
