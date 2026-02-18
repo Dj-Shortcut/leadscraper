@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import argparse
 import csv
+import logging
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from .config import TARGET_POSTCODES
 from .export import export_leads
 from .transform import bucket_from_nace
 from .validate import validate_record
+
+
+LOGGER = logging.getLogger(__name__)
+LARGE_CSV_WARNING_BYTES = 1_000_000_000
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,14 +44,26 @@ def detect_delimiter(path: Path, fallback: str = ";") -> str:
         return fallback
 
 
-def read_csv(path: Path) -> list[dict[str, str]]:
+def iter_csv_rows(path: Path) -> Iterator[dict[str, str]]:
     try:
         delimiter = detect_delimiter(path)
     except (csv.Error, OSError):
         delimiter = ";"
 
+    try:
+        file_size = path.stat().st_size
+        if file_size >= LARGE_CSV_WARNING_BYTES:
+            size_gb = file_size / (1024**3)
+            LOGGER.warning("Large CSV detected for streaming: %s (%.2f GiB)", path, size_gb)
+    except OSError:
+        pass
+
     with path.open("r", encoding="utf-8-sig", errors="ignore", newline="") as handle:
-        return list(csv.DictReader(handle, delimiter=delimiter))
+        yield from csv.DictReader(handle, delimiter=delimiter)
+
+
+def read_csv(path: Path) -> list[dict[str, str]]:
+    return list(iter_csv_rows(path))
 
 
 def find_input_file(input_dir: Path, candidates: list[str]) -> Path:
@@ -131,7 +148,7 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
     }
 
     activities_by_enterprise: dict[str, list[str]] = {}
-    for row in activities:
+    for row in iter_csv_rows(input_dir / "activities.csv"):
         enterprise_number = row.get("enterprise_number", "").strip()
         nace_code = row.get("nace_code", "").strip()
         if enterprise_number and nace_code:
