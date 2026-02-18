@@ -1,8 +1,10 @@
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from src.cli import build_records, find_input_file
+from src import cli
+from src.cli import build_records, find_input_file, iter_csv_rows
 from src.config import TARGET_POSTCODES
 from src.export import export_leads
 
@@ -137,3 +139,79 @@ def test_build_records_without_contacts_file_falls_back_gracefully(tmp_path: Pat
     assert len(records) == 1
     assert records[0]["phone"] == ""
     assert records[0]["email"] == ""
+
+
+def test_iter_csv_rows_falls_back_to_line_by_line_on_stream_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    csv_path = tmp_path / "broken.csv"
+    csv_path.write_text(
+        "enterprise_number;name\n"
+        "1;Acme\n"
+        "2;Broken;extra\n"
+        "3;Bravo\n",
+        encoding="utf-8",
+    )
+
+    original_dict_reader = cli.csv.DictReader
+
+    class FailingDictReader:
+        def __init__(self, handle: Any, delimiter: str) -> None:
+            self._reader = original_dict_reader(handle, delimiter=delimiter)
+            self.fieldnames = self._reader.fieldnames
+            self._index = 0
+
+        def __iter__(self) -> "FailingDictReader":
+            return self
+
+        def __next__(self) -> dict[str, str]:
+            if self._index == 0:
+                self._index += 1
+                return next(self._reader)
+            raise OSError("Invalid argument")
+
+    monkeypatch.setattr(cli.csv, "DictReader", FailingDictReader)
+
+    rows = list(iter_csv_rows(csv_path, max_bad_lines=10))
+    assert rows == [
+        {"enterprise_number": "1", "name": "Acme"},
+        {"enterprise_number": "3", "name": "Bravo"},
+    ]
+
+
+def test_iter_csv_rows_stops_when_max_bad_lines_exceeded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    csv_path = tmp_path / "too_many_bad.csv"
+    csv_path.write_text(
+        "enterprise_number;name\n"
+        "1;Acme\n"
+        "2;Broken;extra\n",
+        encoding="utf-8",
+    )
+
+    original_dict_reader = cli.csv.DictReader
+
+    class FailingDictReader:
+        def __init__(self, handle: Any, delimiter: str) -> None:
+            self._reader = original_dict_reader(handle, delimiter=delimiter)
+            self.fieldnames = self._reader.fieldnames
+            self._index = 0
+
+        def __iter__(self) -> "FailingDictReader":
+            return self
+
+        def __next__(self) -> dict[str, str]:
+            if self._index == 0:
+                self._index += 1
+                return next(self._reader)
+            raise OSError("Invalid argument")
+
+    monkeypatch.setattr(cli.csv, "DictReader", FailingDictReader)
+
+    with pytest.raises(RuntimeError, match="Max bad lines exceeded"):
+        list(iter_csv_rows(csv_path, max_bad_lines=0))
+
+
+def test_iter_csv_rows_falls_back_to_latin_1_encoding(tmp_path: Path) -> None:
+    csv_path = tmp_path / "latin1.csv"
+    csv_path.write_bytes("enterprise_number;name\n1;caf\xe9\n".encode("latin-1"))
+
+    rows = list(iter_csv_rows(csv_path, encoding="utf-8-sig"))
+    assert rows == [{"enterprise_number": "1", "name": "café"}]
