@@ -1,5 +1,5 @@
-enterprise_number,address,postal_code,city
-0123.456.789,Oudstrijdersplein 3,9400,Ninove
-0234.567.891,Molenstraat 12,9300,Aalst
-0345.678.912,Stationsstraat 45,9400,Ninove
-0456.789.123,Kerkstraat 18,9450,Haaltert
+enterprise_number;address;postal_code;city
+0123.456.789;Oudstrijdersplein 3;9400;Ninove
+0234.567.891;Molenstraat 12;9300;Aalst
+0345.678.912;Stationsstraat 45;9400;Ninove
+0456.789.123;Kerkstraat 18;9450;Haaltert

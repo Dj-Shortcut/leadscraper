@@ -6,18 +6,11 @@ import argparse
 import csv
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from .export import export_leads
+from .transform import bucket_from_nace
 from .validate import validate_record
-
-TARGET_SECTORS = {
-    "56": "HORECA",
-    "47": "RETAIL",
-    "62": "IT_SERVICES",
-    "70": "BUSINESS_SERVICES",
-    "96": "PERSONAL_SERVICES",
-}
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,9 +24,24 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def detect_delimiter(path: Path, fallback: str = ";") -> str:
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        sample = handle.read(5_000)
+
+    if not sample:
+        return fallback
+
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=";,\t,")
+        return str(dialect.delimiter)
+    except csv.Error:
+        return fallback
+
+
 def read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open("r", encoding="utf-8") as handle:
-        return list(csv.DictReader(handle))
+    delimiter = detect_delimiter(path)
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle, delimiter=delimiter))
 
 
 def months_since(start_date: str) -> int:
@@ -46,47 +54,34 @@ def parse_postcodes(raw: str) -> set[str]:
     return {item.strip() for item in raw.split(",") if item.strip()}
 
 
-def derive_sector_bucket(nace_codes: Iterable[str]) -> str:
-    for code in nace_codes:
-        prefix = code[:2]
-        if prefix in TARGET_SECTORS:
-            return TARGET_SECTORS[prefix]
-    return "OTHER"
-
-
 def score_record(
     status: str,
-    has_website: bool,
     age_months: int,
-    in_postcode_set: bool,
     sector_bucket: str,
+    has_nace: bool,
     max_months: int,
 ) -> tuple[int, str]:
     score = 0
     reasons: list[str] = []
 
-    if status.upper() == "ACTIVE":
-        score += 20
-        reasons.append("active_status")
-
     if age_months <= max_months:
-        score += 25
-        reasons.append("recent_start")
+        score += 30
+        reasons.append("new<18m;+30")
 
-    if sector_bucket != "OTHER":
-        score += 20
-        reasons.append(f"target_sector:{sector_bucket}")
+    if sector_bucket in {"beauty", "horeca", "health"}:
+        score += 30
+        reasons.append("sector;+30")
 
-    if not has_website:
-        score += 20
-        reasons.append("no_website_detected")
+    if not has_nace:
+        score -= 5
+        reasons.append("missing_nace;-5")
 
-    if in_postcode_set:
-        score += 15
-        reasons.append("preferred_postcode")
+    if status.upper() == "ACTIVE":
+        score += 10
+        reasons.append("active_status;+10")
 
     score = max(0, min(100, score))
-    return score, ",".join(reasons)
+    return score, "|".join(reasons)
 
 
 def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int) -> list[dict[str, Any]]:
@@ -118,24 +113,21 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
             continue
 
         age_months = months_since(start_date)
-        if age_months > max_months:
-            continue
-
         in_postcode_set = not selected_postcodes or postal_code in selected_postcodes
         if selected_postcodes and not in_postcode_set:
             continue
 
         nace_codes = activities_by_enterprise.get(enterprise_number, [])
-        sector_bucket = derive_sector_bucket(nace_codes)
+        first_nace_code = nace_codes[0] if nace_codes else None
+        sector_bucket = bucket_from_nace(first_nace_code)
         website = (enterprise.get("website") or "").strip()
         has_website = bool(website)
 
         score_total, score_reasons = score_record(
             status=enterprise.get("status", ""),
-            has_website=has_website,
             age_months=age_months,
-            in_postcode_set=in_postcode_set,
             sector_bucket=sector_bucket,
+            has_nace=bool(nace_codes),
             max_months=max_months,
         )
 
