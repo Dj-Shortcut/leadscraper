@@ -10,6 +10,7 @@ Lead Radar verwerkt KBO Open Data CSV-dumps naar een geprioriteerde lead-lijst.
    - `enterprises.csv` of `enterprise.csv`
    - `establishments.csv` of `establishment.csv`
    - `activities.csv` of `activity.csv`
+   - optioneel: `contacts.csv` of `contact.csv`
 
 De tool detecteert automatisch welke variant aanwezig is.
 
@@ -69,6 +70,8 @@ python -m src.cli \
 - `new<18m` wanneer startdatum binnen `--months` valt (`+30`)
 - `sector_high` wanneer `sector_bucket` in `{beauty, horeca, health}` zit (`+15`)
 - `no_nace` wanneer geen NACE-code aanwezig is (`-5`)
+- `has_phone` wanneer telefoon aanwezig is (`+5`)
+- `has_email` wanneer email aanwezig is (`+3`)
 
 ## 6) Outputlocaties
 
