@@ -11,6 +11,8 @@ Lead Radar verwerkt KBO Open Data CSV-dumps naar een geprioriteerde lead-lijst.
    - `establishments.csv`
    - `activities.csv`
 
+> Verwacht CSV met `;` als delimiter (KBO-stijl). De CLI detecteert automatisch delimiter en leest ook komma-CSV indien nodig.
+
 Voorbeeld:
 
 ```bash
@@ -50,7 +52,26 @@ python -m src.cli \
   --limit 200
 ```
 
-## 4) Outputlocaties
+## 4) Sector bucketing
+
+`sector_bucket` komt uit `bucket_from_nace()` met deze buckets:
+- `beauty`
+- `horeca`
+- `health`
+- `retail`
+- `service_trades`
+- `other`
+
+## 5) Scoringregels
+
+`score_reasons` gebruikt `|` als separator.
+
+- `new<18m;+30` wanneer startdatum binnen `--months` valt
+- `sector;+30` wanneer `sector_bucket` in `{beauty, horeca, health}` zit
+- `missing_nace;-5` wanneer geen NACE-code aanwezig is
+- `active_status;+10` bonus wanneer status `ACTIVE` is
+
+## 6) Outputlocaties
 
 - Verwerkte output wordt geschreven naar het pad in `--output`.
 - Voorbeelden:
