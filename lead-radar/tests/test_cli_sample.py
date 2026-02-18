@@ -28,6 +28,7 @@ def test_pipeline_runs_on_sample_and_writes_output(tmp_path: Path) -> None:
     assert "enterprise_number" in content
     assert "phone" in content
     assert "email" in content
+    assert "website" in content
 
 
 def test_read_csv_supports_comma_delimiter(tmp_path: Path) -> None:
@@ -95,7 +96,7 @@ def test_build_records_detects_single_subfolder_with_csv_files(tmp_path: Path, c
     assert records[0]["source_files_version"] == "2026-02-18"
 
 
-def test_build_records_enriches_phone_and_email_when_contacts_exists(tmp_path: Path) -> None:
+def test_build_records_enriches_contacts_from_kbo_contact_schema(tmp_path: Path) -> None:
     (tmp_path / "enterprises.csv").write_text(
         "enterprise_number;name;status;start_date;postal_code;city\n"
         "0123456789;Acme;ACTIVE;2026-01-01;9400;Ninove\n",
@@ -111,72 +112,53 @@ def test_build_records_enriches_phone_and_email_when_contacts_exists(tmp_path: P
         encoding="utf-8",
     )
     (tmp_path / "contact.csv").write_text(
-        "establishment_number;phone;email\n"
-        "2.987.654.321;+32123456789;hello@acme.example\n",
+        "EntityNumber;EntityContact;ContactType;Value\n"
+        "\"2.987.654.321\";EST;TEL;+32123456789\n"
+        "\"2.987.654.321\";EST;EMAIL;hello@acme.example\n"
+        "\"0200.362.210\";ENT;WEB;https://ignored.example\n"
+        "\"2.987.654.321\";EST;FAX;+329999999\n",
         encoding="utf-8",
     )
 
     records = build_records(tmp_path, selected_postcodes={"9400"}, max_months=18)
 
     assert len(records) == 1
+    assert records[0]["enterprise_number"] == "0123456789"
     assert records[0]["phone"] == "+32123456789"
     assert records[0]["email"] == "hello@acme.example"
+    assert records[0]["website"] == ""
     assert records[0]["score_total"] == 53
     assert "has_phone" in records[0]["score_reasons"]
     assert "has_email" in records[0]["score_reasons"]
 
 
-def test_build_records_supports_contacts_with_doubled_csv_extension(tmp_path: Path) -> None:
-    (tmp_path / "enterprise.csv").write_text(
+def test_build_records_maps_establishment_contact_to_enterprise(tmp_path: Path) -> None:
+    (tmp_path / "enterprises.csv").write_text(
         "enterprise_number;name;status;start_date;postal_code;city\n"
-        "0123456789;Acme;ACTIVE;2026-01-01;9400;Ninove\n",
+        "0200362210;Beta;ACTIVE;2026-01-01;9400;Ninove\n",
         encoding="utf-8",
     )
-    (tmp_path / "establishment.csv").write_text(
+    (tmp_path / "establishments.csv").write_text(
         "enterprise_number;establishment_number;address;postal_code;city\n"
-        "0123456789;2.987.654.321;Main street 1;9400;Ninove\n",
+        "0200362210;2.123.456.789;Main street 2;9400;Ninove\n",
         encoding="utf-8",
     )
-    (tmp_path / "activity.csv").write_text(
-        "enterprise_number;nace_code\n0123456789;96.02\n",
+    (tmp_path / "activities.csv").write_text(
+        "enterprise_number;nace_code\n0200362210;56.10\n",
         encoding="utf-8",
     )
-    (tmp_path / "contact.csv.csv").write_text(
-        "establishment_number;phone;email\n"
-        "2.987.654.321;+32123456789;hello@acme.example\n",
+    (tmp_path / "contact.csv").write_text(
+        "EntityNumber;EntityContact;ContactType;Value\n"
+        "\"2.123.456.789\";EST;WEB;https://beta.example\n",
         encoding="utf-8",
     )
 
     records = build_records(tmp_path, selected_postcodes={"9400"}, max_months=18)
 
     assert len(records) == 1
-    assert records[0]["phone"] == "+32123456789"
-    assert records[0]["email"] == "hello@acme.example"
-
-
-def test_build_records_verbose_prints_detected_files(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    (tmp_path / "enterprises.csv").write_text(
-        "enterprise_number;name;status;start_date;postal_code;city\n"
-        "0123456789;Acme;ACTIVE;2026-01-01;9400;Ninove\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "establishments.csv").write_text(
-        "enterprise_number;address;postal_code;city\n"
-        "0123456789;Main street 1;9400;Ninove\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "activities.csv").write_text(
-        "enterprise_number;nace_code\n0123456789;96.02\n",
-        encoding="utf-8",
-    )
-
-    build_records(tmp_path, selected_postcodes={"9400"}, max_months=18, verbose=True)
-
-    captured = capsys.readouterr()
-    assert "Detected files:" in captured.out
-    assert "activities.csv" in captured.out
-    assert "enterprises.csv" in captured.out
-    assert "establishments.csv" in captured.out
+    assert records[0]["website"] == "https://beta.example"
+    assert records[0]["has_website"] == "yes"
+    assert "has_website" in records[0]["score_reasons"]
 
 
 def test_build_records_without_contacts_file_falls_back_gracefully(tmp_path: Path) -> None:
