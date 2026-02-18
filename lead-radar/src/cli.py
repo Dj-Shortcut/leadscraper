@@ -20,6 +20,13 @@ from .validate import validate_record
 LOGGER = logging.getLogger(__name__)
 LARGE_CSV_WARNING_BYTES = 1_000_000_000
 
+INPUT_FILE_CANDIDATES: dict[str, list[str]] = {
+    "enterprise": ["enterprises.csv", "enterprise.csv"],
+    "establishment": ["establishments.csv", "establishment.csv"],
+    "activity": ["activities.csv", "activity.csv"],
+    "contact": ["contacts.csv", "contact.csv"],
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Lead Radar CSV pipeline")
@@ -29,6 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--months", type=int, default=18, help="Maximale leeftijd in maanden")
     parser.add_argument("--min-score", type=int, default=40, help="Minimale score voor output")
     parser.add_argument("--limit", type=int, default=200, help="Maximum records in output")
+    parser.add_argument("--verbose", action="store_true", help="Toon detectie-info over inputbestanden")
     return parser.parse_args()
 
 
@@ -46,7 +54,10 @@ def detect_delimiter(path: Path, fallback: str = ";") -> str:
         return fallback
 
 
-def iter_csv_rows(path: Path) -> Iterator[dict[str, str]]:
+def iter_csv_rows(path: Path, *, encoding: str = "utf-8-sig", max_bad_lines: int = 1000) -> Iterator[dict[str, str]]:
+    if max_bad_lines < 0:
+        raise ValueError("max_bad_lines moet >= 0 zijn")
+
     try:
         delimiter = detect_delimiter(path)
     except (csv.Error, OSError):
@@ -60,12 +71,94 @@ def iter_csv_rows(path: Path) -> Iterator[dict[str, str]]:
     except OSError:
         pass
 
-    with path.open("r", encoding="utf-8-sig", errors="ignore", newline="") as handle:
-        yield from csv.DictReader(handle, delimiter=delimiter)
+    encodings = [encoding]
+    if encoding.lower() != "latin-1":
+        encodings.append("latin-1")
+
+    last_decode_error: UnicodeDecodeError | None = None
+    for selected_encoding in encodings:
+        bad_lines = 0
+        line_index = 1
+        try:
+            with path.open("r", encoding=selected_encoding, errors="strict", newline="") as handle:
+                reader = csv.DictReader(handle, delimiter=delimiter)
+                try:
+                    for line_index, row in enumerate(reader, start=2):
+                        yield row
+                    if bad_lines:
+                        LOGGER.warning("bad lines skipped: %s", bad_lines)
+                    return
+                except (OSError, csv.Error) as err:
+                    LOGGER.warning(
+                        "CSV stream error in %s at line %s: %s. Falling back to line-by-line parsing.",
+                        path,
+                        line_index,
+                        err,
+                    )
+
+                    fieldnames = list(reader.fieldnames or [])
+                    if not fieldnames:
+                        raise csv.Error("CSV header ontbreekt of kon niet gelezen worden")
+
+                    for fallback_line_index, line in enumerate(handle, start=line_index + 1):
+                        try:
+                            parsed_rows = list(csv.reader([line], delimiter=delimiter))
+                        except (OSError, csv.Error) as parse_error:
+                            bad_lines += 1
+                            LOGGER.warning(
+                                "Skipping bad line %s in %s: %s",
+                                fallback_line_index,
+                                path,
+                                parse_error,
+                            )
+                            if bad_lines > max_bad_lines:
+                                raise RuntimeError(
+                                    f"Max bad lines exceeded ({max_bad_lines}) while reading {path}"
+                                ) from parse_error
+                            continue
+
+                        if not parsed_rows:
+                            bad_lines += 1
+                            LOGGER.warning("Skipping empty/bad line %s in %s", fallback_line_index, path)
+                            if bad_lines > max_bad_lines:
+                                raise RuntimeError(f"Max bad lines exceeded ({max_bad_lines}) while reading {path}")
+                            continue
+
+                        values = parsed_rows[0]
+                        if len(values) != len(fieldnames):
+                            bad_lines += 1
+                            LOGGER.warning(
+                                "Skipping bad line %s in %s: expected %s columns, got %s",
+                                fallback_line_index,
+                                path,
+                                len(fieldnames),
+                                len(values),
+                            )
+                            if bad_lines > max_bad_lines:
+                                raise RuntimeError(f"Max bad lines exceeded ({max_bad_lines}) while reading {path}")
+                            continue
+
+                        yield dict(zip(fieldnames, values))
+
+                    if bad_lines:
+                        LOGGER.warning("bad lines skipped: %s", bad_lines)
+                    return
+        except UnicodeDecodeError as decode_error:
+            last_decode_error = decode_error
+            LOGGER.warning(
+                "Failed reading %s with encoding %s (%s).",
+                path,
+                selected_encoding,
+                decode_error,
+            )
+            continue
+
+    if last_decode_error is not None:
+        raise last_decode_error
 
 
-def read_csv(path: Path) -> list[dict[str, str]]:
-    return list(iter_csv_rows(path))
+def read_csv(path: Path, *, encoding: str = "utf-8-sig", max_bad_lines: int = 1000) -> list[dict[str, str]]:
+    return list(iter_csv_rows(path, encoding=encoding, max_bad_lines=max_bad_lines))
 
 
 def normalize_key(name: str) -> str:
@@ -90,6 +183,11 @@ def find_input_file(input_dir: Path, candidates: list[str]) -> Path:
         if candidate_path.is_file():
             return candidate_path
 
+    for candidate in candidates:
+        doubled_extension = input_dir / f"{candidate}.csv"
+        if doubled_extension.is_file():
+            return doubled_extension
+
     found_entries = sorted(item.name for item in input_dir.iterdir()) if input_dir.exists() else []
     expected = ", ".join(candidates)
     found = ", ".join(found_entries) if found_entries else "(geen bestanden gevonden)"
@@ -97,6 +195,13 @@ def find_input_file(input_dir: Path, candidates: list[str]) -> Path:
         f"Geen geldig inputbestand gevonden in '{input_dir}'. "
         f"Verwacht één van: {expected}. Gevonden: {found}."
     )
+
+
+def _format_detected_files(input_dir: Path) -> str:
+    entries = sorted(item.name for item in input_dir.iterdir()) if input_dir.exists() else []
+    if not entries:
+        return "Detected files: (geen bestanden gevonden)"
+    return f"Detected files: {', '.join(entries)}"
 
 
 def detect_input_dir(input_dir: Path) -> Path:
@@ -116,9 +221,15 @@ def detect_input_dir(input_dir: Path) -> Path:
     return input_dir
 
 
-def load_contacts_by_enterprise(input_dir: Path, establishments: list[dict[str, str]]) -> dict[str, dict[str, str]]:
+def load_contacts_by_enterprise(
+    input_dir: Path,
+    establishments: list[dict[str, str]],
+    *,
+    encoding: str,
+    max_bad_lines: int,
+) -> dict[str, dict[str, str]]:
     try:
-        contacts_file = find_input_file(input_dir, ["contacts.csv", "contact.csv"])
+        contacts_file = find_input_file(input_dir, INPUT_FILE_CANDIDATES["contact"])
     except FileNotFoundError:
         return {}
 
@@ -131,7 +242,7 @@ def load_contacts_by_enterprise(input_dir: Path, establishments: list[dict[str, 
             establishment_to_enterprise[establishment_number] = enterprise_number
 
     contacts_by_enterprise: dict[str, dict[str, str]] = {}
-    for raw_row in iter_csv_rows(contacts_file):
+    for raw_row in iter_csv_rows(contacts_file, encoding=encoding, max_bad_lines=max_bad_lines):
         row = normalize_row_keys(raw_row)
 
         entity_number = normalize_identifier(
@@ -227,12 +338,14 @@ def score_record(
     return score, "|".join(reasons)
 
 
-def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int) -> list[dict[str, Any]]:
+def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int, verbose: bool = False) -> list[dict[str, Any]]:
     resolved_input_dir = detect_input_dir(input_dir)
+    if verbose:
+        print(_format_detected_files(resolved_input_dir))
 
-    enterprises = read_csv(find_input_file(resolved_input_dir, ["enterprises.csv", "enterprise.csv"]))
-    establishments = read_csv(find_input_file(resolved_input_dir, ["establishments.csv", "establishment.csv"]))
-    activities = read_csv(find_input_file(resolved_input_dir, ["activities.csv", "activity.csv"]))
+    enterprises = read_csv(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["enterprise"]))
+    establishments = read_csv(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["establishment"]))
+    activities = read_csv(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["activity"]))
     contacts_by_enterprise = load_contacts_by_enterprise(resolved_input_dir, establishments)
 
     establishment_by_enterprise = {
@@ -317,7 +430,12 @@ def main() -> None:
     output_file = Path(args.output)
     selected_postcodes = parse_postcodes(args.postcodes)
 
-    records = build_records(input_dir=input_dir, selected_postcodes=selected_postcodes, max_months=args.months)
+    records = build_records(
+        input_dir=input_dir,
+        selected_postcodes=selected_postcodes,
+        max_months=args.months,
+        verbose=args.verbose,
+    )
     total_records = len(records)
 
     filtered = [row for row in records if int(row["score_total"]) >= args.min_score]
