@@ -80,6 +80,10 @@ def normalize_row_keys(row: dict[str, str]) -> dict[str, str]:
     return {normalize_key(key): value for key, value in row.items()}
 
 
+def normalize_identifier(value: str) -> str:
+    return re.sub(r"\D", "", str(value or "").strip().strip('"').strip("'"))
+
+
 def find_input_file(input_dir: Path, candidates: list[str]) -> Path:
     for candidate in candidates:
         candidate_path = input_dir / candidate
@@ -121,32 +125,51 @@ def load_contacts_by_enterprise(input_dir: Path, establishments: list[dict[str, 
     establishment_to_enterprise: dict[str, str] = {}
     for row in establishments:
         normalized_row = normalize_row_keys(row)
-        establishment_number = (normalized_row.get("establishment_number") or "").strip()
-        enterprise_number = (normalized_row.get("enterprise_number") or "").strip()
+        establishment_number = normalize_identifier(normalized_row.get("establishment_number") or "")
+        enterprise_number = normalize_identifier(normalized_row.get("enterprise_number") or "")
         if establishment_number and enterprise_number:
             establishment_to_enterprise[establishment_number] = enterprise_number
 
     contacts_by_enterprise: dict[str, dict[str, str]] = {}
     for raw_row in iter_csv_rows(contacts_file):
         row = normalize_row_keys(raw_row)
-        enterprise_number = (row.get("enterprise_number") or "").strip()
-        if not enterprise_number:
-            establishment_number = (row.get("establishment_number") or "").strip()
-            enterprise_number = establishment_to_enterprise.get(establishment_number, "")
+
+        entity_number = normalize_identifier(
+            row.get("entitynumber")
+            or row.get("entity_number")
+            or row.get("enterprise_number")
+            or row.get("establishment_number")
+            or ""
+        )
+        entity_contact = (row.get("entitycontact") or row.get("entity_contact") or "").strip().upper()
+        contact_type = (row.get("contacttype") or row.get("contact_type") or "").strip().upper()
+        contact_value = (row.get("value") or row.get("phone") or row.get("email") or row.get("website") or "").strip()
+
+        if contact_type not in {"TEL", "EMAIL", "WEB"} or not contact_value:
+            continue
+
+        enterprise_number = ""
+        is_establishment = entity_contact in {"EST", "ESTABLISHMENT", "VESTIGING"}
+        if is_establishment:
+            enterprise_number = establishment_to_enterprise.get(entity_number, "")
+        else:
+            enterprise_number = entity_number
 
         if not enterprise_number:
             continue
 
-        phone = (row.get("phone") or "").strip()
-        email = (row.get("email") or "").strip()
-        if not phone and not email:
-            continue
+        existing = contacts_by_enterprise.get(
+            enterprise_number,
+            {"phone": "", "email": "", "website": "", "has_website": "no"},
+        )
+        if contact_type == "TEL" and not existing["phone"]:
+            existing["phone"] = contact_value
+        if contact_type == "EMAIL" and not existing["email"]:
+            existing["email"] = contact_value
+        if contact_type == "WEB" and not existing["website"]:
+            existing["website"] = contact_value
+            existing["has_website"] = "yes"
 
-        existing = contacts_by_enterprise.get(enterprise_number, {"phone": "", "email": ""})
-        if phone and not existing["phone"]:
-            existing["phone"] = phone
-        if email and not existing["email"]:
-            existing["email"] = email
         contacts_by_enterprise[enterprise_number] = existing
 
     return contacts_by_enterprise
@@ -171,6 +194,7 @@ def score_record(
     has_nace: bool,
     has_phone: bool,
     has_email: bool,
+    has_website: bool,
     max_months: int,
 ) -> tuple[int, str]:
     score = 0
@@ -196,6 +220,9 @@ def score_record(
         score += 3
         reasons.append("has_email")
 
+    if has_website:
+        reasons.append("has_website")
+
     score = max(0, min(100, score))
     return score, "|".join(reasons)
 
@@ -209,12 +236,14 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
     contacts_by_enterprise = load_contacts_by_enterprise(resolved_input_dir, establishments)
 
     establishment_by_enterprise = {
-        row["enterprise_number"].strip(): row for row in establishments if row.get("enterprise_number", "").strip()
+        normalize_identifier(row["enterprise_number"]): row
+        for row in establishments
+        if normalize_identifier(row.get("enterprise_number", ""))
     }
 
     activities_by_enterprise: dict[str, list[str]] = {}
     for row in iter_csv_rows(find_input_file(resolved_input_dir, ["activities.csv", "activity.csv"])):
-        enterprise_number = row.get("enterprise_number", "").strip()
+        enterprise_number = normalize_identifier(row.get("enterprise_number", ""))
         nace_code = row.get("nace_code", "").strip()
         if enterprise_number and nace_code:
             activities_by_enterprise.setdefault(enterprise_number, []).append(nace_code)
@@ -223,9 +252,12 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
     records: list[dict[str, Any]] = []
 
     for enterprise in enterprises:
-        enterprise_number = enterprise.get("enterprise_number", "").strip()
+        enterprise_number = normalize_identifier(enterprise.get("enterprise_number", ""))
         est = establishment_by_enterprise.get(enterprise_number, {})
-        contact = contacts_by_enterprise.get(enterprise_number, {"phone": "", "email": ""})
+        contact = contacts_by_enterprise.get(
+            enterprise_number,
+            {"phone": "", "email": "", "website": "", "has_website": "no"},
+        )
 
         postal_code = (est.get("postal_code") or enterprise.get("postal_code") or "").strip()
         start_date = enterprise.get("start_date", "").strip()
@@ -240,7 +272,7 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
         nace_codes = activities_by_enterprise.get(enterprise_number, [])
         first_nace_code = nace_codes[0] if nace_codes else None
         sector_bucket = bucket_from_nace(first_nace_code)
-        website = (enterprise.get("website") or "").strip()
+        website = contact["website"] or (enterprise.get("website") or "").strip()
         has_website = bool(website)
         phone = contact["phone"]
         email = contact["email"]
@@ -251,6 +283,7 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
             has_nace=bool(nace_codes),
             has_phone=bool(phone),
             has_email=bool(email),
+            has_website=has_website,
             max_months=max_months,
         )
 
@@ -265,6 +298,7 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
             "nace_codes": ",".join(nace_codes),
             "sector_bucket": sector_bucket,
             "has_website": "yes" if has_website else "no",
+            "website": website,
             "phone": phone,
             "email": email,
             "score_total": score_total,
