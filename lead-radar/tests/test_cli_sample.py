@@ -1,3 +1,4 @@
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -374,6 +375,8 @@ def test_resolve_input_dir_downloads_and_extracts_zip(monkeypatch: pytest.Monkey
     )
 
     calls: dict[str, str] = {}
+    expected_output_dir = tmp_path / "downloads" / "extracted"
+    expected_resolved_path = expected_output_dir
 
     def fake_build(url: str) -> str:
         calls["build"] = url
@@ -383,13 +386,15 @@ def test_resolve_input_dir_downloads_and_extracts_zip(monkeypatch: pytest.Monkey
         calls["download_url"] = url
         calls["download_dest"] = str(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(b"PK")
+        with zipfile.ZipFile(destination, "w") as zip_handle:
+            zip_handle.writestr("dummy.csv", "id;name\n1;alpha\n")
         return destination
 
     def fake_extract(zip_path: Path, output_dir: Path) -> Path:
         calls["zip_path"] = str(zip_path)
         calls["extract_dest"] = str(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "dummy.csv").write_text("id;name\n1;alpha\n", encoding="utf-8")
         return output_dir
 
     monkeypatch.setattr(cli, "build_drive_download_url", fake_build)
@@ -398,11 +403,13 @@ def test_resolve_input_dir_downloads_and_extracts_zip(monkeypatch: pytest.Monkey
 
     resolved = cli.resolve_input_dir(args)
 
-    assert calls["build"].startswith("https://drive.google.com/file/d/")
-    assert calls["download_url"].startswith("https://drive.google.com/uc")
-    assert calls["download_dest"].endswith("kbo_dump.zip")
-    assert calls["extract_dest"].endswith("extracted")
-    assert resolved == Path(calls["extract_dest"])
+    assert calls["build"] == args.input_drive_zip
+    assert calls["download_url"].startswith("https://drive.google.com/")
+    assert Path(calls["download_dest"]).parent == Path(args.download_dir)
+    assert calls["zip_path"] == calls["download_dest"]
+    assert Path(calls["extract_dest"]) == expected_output_dir
+    assert resolved == expected_resolved_path
+    assert (expected_output_dir / "dummy.csv").exists()
 
 
 def test_resolve_input_dir_falls_back_to_local_input_when_drive_download_fails(
@@ -416,15 +423,99 @@ def test_resolve_input_dir_falls_back_to_local_input_when_drive_download_fails(
         download_dir=str(tmp_path / "downloads"),
     )
 
+    helper_calls = {"extract": 0}
     monkeypatch.setattr(cli, "build_drive_download_url", lambda _: "https://drive.google.com/uc?export=download&id=abc123")
 
     def failing_download(url: str, destination: Path) -> Path:
         raise OSError("network blocked")
 
+    def fake_extract(zip_path: Path, output_dir: Path) -> Path:
+        helper_calls["extract"] += 1
+        return output_dir
+
     monkeypatch.setattr(cli, "download_file", failing_download)
+    monkeypatch.setattr(cli, "extract_zip_file", fake_extract)
 
     resolved = cli.resolve_input_dir(args)
     captured = capsys.readouterr()
 
     assert resolved == fallback_input
     assert "WARNING: failed to download/extract Drive ZIP" in captured.out
+    assert helper_calls["extract"] == 0
+
+
+def test_resolve_input_dir_uses_local_input_when_no_drive_zip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    local_input = tmp_path / "raw"
+    local_input.mkdir(parents=True)
+    args = cli.argparse.Namespace(
+        input=str(local_input),
+        input_drive_zip="",
+        download_dir=str(tmp_path / "downloads"),
+    )
+
+    helper_calls = {"build": 0, "download": 0, "extract": 0}
+
+    def fake_build(url: str) -> str:
+        helper_calls["build"] += 1
+        return url
+
+    def fake_download(url: str, destination: Path) -> Path:
+        helper_calls["download"] += 1
+        return destination
+
+    def fake_extract(zip_path: Path, output_dir: Path) -> Path:
+        helper_calls["extract"] += 1
+        return output_dir
+
+    monkeypatch.setattr(cli, "build_drive_download_url", fake_build)
+    monkeypatch.setattr(cli, "download_file", fake_download)
+    monkeypatch.setattr(cli, "extract_zip_file", fake_extract)
+
+    resolved = cli.resolve_input_dir(args)
+
+    assert resolved == local_input
+    assert helper_calls == {"build": 0, "download": 0, "extract": 0}
+
+
+def test_resolve_input_dir_raises_for_invalid_drive_url(tmp_path: Path) -> None:
+    args = cli.argparse.Namespace(
+        input=str(tmp_path / "raw"),
+        input_drive_zip="https://example.com/not-drive",
+        download_dir=str(tmp_path / "downloads"),
+    )
+
+    with pytest.raises(ValueError, match="Not a Google Drive URL"):
+        cli.resolve_input_dir(args)
+
+
+def test_resolve_input_dir_is_idempotent_when_output_dir_exists(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    args = cli.argparse.Namespace(
+        input=str(tmp_path / "raw"),
+        input_drive_zip="https://drive.google.com/file/d/abc123/view?usp=sharing",
+        download_dir=str(tmp_path / "downloads"),
+    )
+    existing_extracted_dir = tmp_path / "downloads" / "extracted"
+    existing_extracted_dir.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(cli, "build_drive_download_url", lambda _: "https://drive.google.com/uc?export=download&id=abc123")
+
+    def fake_download(url: str, destination: Path) -> Path:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(destination, "w") as zip_handle:
+            zip_handle.writestr("dummy.csv", "id;name\n1;alpha\n")
+        return destination
+
+    def fake_extract(zip_path: Path, output_dir: Path) -> Path:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "dummy.csv").write_text("id;name\n1;alpha\n", encoding="utf-8")
+        return output_dir
+
+    monkeypatch.setattr(cli, "download_file", fake_download)
+    monkeypatch.setattr(cli, "extract_zip_file", fake_extract)
+
+    resolved = cli.resolve_input_dir(args)
+
+    assert resolved == existing_extracted_dir
+    assert (existing_extracted_dir / "dummy.csv").exists()
