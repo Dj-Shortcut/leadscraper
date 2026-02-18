@@ -2,6 +2,18 @@
 
 Lead Radar verwerkt KBO Open Data CSV-dumps naar een geprioriteerde lead-lijst.
 
+## How to run
+
+Vanuit de repository-root (`lead-radar/`):
+
+```bash
+# CLI help
+python -m src.cli --help
+
+# Volledige run
+python -m src.cli --input data/raw --output data/processed/leads.csv
+```
+
 ## 1) KBO Open Data downloaden
 
 1. Download de gewenste KBO Open Data bestanden.

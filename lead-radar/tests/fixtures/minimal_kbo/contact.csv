@@ -1,0 +1,4 @@
+EntityNumber;EntityContact;ContactType;Value
+"2.111.222.333";EST;TEL;+32111222333
+"2.111.222.333";EST;EMAIL;hello@fixture-salon.example
+"2.111.222.333";EST;WEB;https://fixture-salon.example
