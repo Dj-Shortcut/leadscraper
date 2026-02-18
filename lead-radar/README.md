@@ -6,10 +6,12 @@ Lead Radar verwerkt KBO Open Data CSV-dumps naar een geprioriteerde lead-lijst.
 
 1. Download de gewenste KBO Open Data bestanden (enterprises, establishments, activities).
 2. Maak een versie-map met datum onder `data/raw/<YYYY-MM-DD>/`.
-3. Plaats de bronbestanden met deze namen:
-   - `enterprises.csv`
-   - `establishments.csv`
-   - `activities.csv`
+3. Plaats de bronbestanden met deze namen (enkelvoud of meervoud werkt):
+   - `enterprises.csv` of `enterprise.csv`
+   - `establishments.csv` of `establishment.csv`
+   - `activities.csv` of `activity.csv`
+
+De tool detecteert automatisch welke variant aanwezig is.
 
 > Verwacht CSV met `;` als delimiter (KBO-stijl). De CLI detecteert automatisch delimiter en leest ook komma-CSV indien nodig.
 
