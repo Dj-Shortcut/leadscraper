@@ -364,3 +364,67 @@ def test_build_records_maps_kbo_pascal_case_and_dotted_identifiers(tmp_path: Pat
     assert records[0]["phone"] == "+321234"
     assert records[0]["email"] == "alpha@example.com"
     assert records[0]["website"] == "https://alpha.example"
+
+
+def test_resolve_input_dir_downloads_and_extracts_zip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    args = cli.argparse.Namespace(
+        input=str(tmp_path / "raw"),
+        input_drive_zip="https://drive.google.com/file/d/abc123/view?usp=sharing",
+        download_dir=str(tmp_path / "downloads"),
+    )
+
+    calls: dict[str, str] = {}
+
+    def fake_build(url: str) -> str:
+        calls["build"] = url
+        return "https://drive.google.com/uc?export=download&id=abc123"
+
+    def fake_download(url: str, destination: Path) -> Path:
+        calls["download_url"] = url
+        calls["download_dest"] = str(destination)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"PK")
+        return destination
+
+    def fake_extract(zip_path: Path, output_dir: Path) -> Path:
+        calls["zip_path"] = str(zip_path)
+        calls["extract_dest"] = str(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        return output_dir
+
+    monkeypatch.setattr(cli, "build_drive_download_url", fake_build)
+    monkeypatch.setattr(cli, "download_file", fake_download)
+    monkeypatch.setattr(cli, "extract_zip_file", fake_extract)
+
+    resolved = cli.resolve_input_dir(args)
+
+    assert calls["build"].startswith("https://drive.google.com/file/d/")
+    assert calls["download_url"].startswith("https://drive.google.com/uc")
+    assert calls["download_dest"].endswith("kbo_dump.zip")
+    assert calls["extract_dest"].endswith("extracted")
+    assert resolved == Path(calls["extract_dest"])
+
+
+def test_resolve_input_dir_falls_back_to_local_input_when_drive_download_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fallback_input = tmp_path / "raw"
+    fallback_input.mkdir(parents=True)
+    args = cli.argparse.Namespace(
+        input=str(fallback_input),
+        input_drive_zip="https://drive.google.com/file/d/abc123/view?usp=sharing",
+        download_dir=str(tmp_path / "downloads"),
+    )
+
+    monkeypatch.setattr(cli, "build_drive_download_url", lambda _: "https://drive.google.com/uc?export=download&id=abc123")
+
+    def failing_download(url: str, destination: Path) -> Path:
+        raise OSError("network blocked")
+
+    monkeypatch.setattr(cli, "download_file", failing_download)
+
+    resolved = cli.resolve_input_dir(args)
+    captured = capsys.readouterr()
+
+    assert resolved == fallback_input
+    assert "WARNING: failed to download/extract Drive ZIP" in captured.out

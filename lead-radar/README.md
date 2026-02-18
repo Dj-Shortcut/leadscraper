@@ -70,6 +70,19 @@ Ninove-voorbeeld (kort):
 python -m src.cli --input data/raw/2026-02-18 --output data/processed/leads_ninove.csv --postcodes 9400
 ```
 
+
+## Google Drive ZIP + Google Sheets workflow
+
+Je kan nu rechtstreeks een publieke Google Drive ZIP downloaden en de output naar een Google Sheet sturen.
+
+Voorbeeld met jouw links:
+
+```bash
+python -m src.cli   --input data/raw   --input-drive-zip "https://drive.google.com/file/d/169qB_45xf57l_6drT1ScZuIPIQPUG2oH/view?usp=sharing"   --download-dir data/downloads   --output data/processed/leads.csv   --lite   --sheet-url "https://docs.google.com/spreadsheets/d/1phKaRKPVybV_8PAsLOS7deEgRQn5HiVWNz2BlvVwnD0/edit?usp=drive_link"   --sheet-tab Leads
+```
+
+> Google Sheets upload vereist service-account credentials via env var `GOOGLE_SERVICE_ACCOUNT_JSON` en package `gspread`.
+
 ## 4) Sector bucketing
 
 `sector_bucket` komt uit `bucket_from_nace()` met deze buckets:
