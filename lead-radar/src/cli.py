@@ -49,6 +49,38 @@ def read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle, delimiter=delimiter))
 
 
+def find_input_file(input_dir: Path, candidates: list[str]) -> Path:
+    for candidate in candidates:
+        candidate_path = input_dir / candidate
+        if candidate_path.is_file():
+            return candidate_path
+
+    found_entries = sorted(item.name for item in input_dir.iterdir()) if input_dir.exists() else []
+    expected = ", ".join(candidates)
+    found = ", ".join(found_entries) if found_entries else "(geen bestanden gevonden)"
+    raise FileNotFoundError(
+        f"Geen geldig inputbestand gevonden in '{input_dir}'. "
+        f"Verwacht één van: {expected}. Gevonden: {found}."
+    )
+
+
+def detect_input_dir(input_dir: Path) -> Path:
+    csv_files = sorted(item for item in input_dir.iterdir() if item.is_file() and item.suffix.lower() == ".csv")
+    if csv_files:
+        return input_dir
+
+    subdirs = sorted(item for item in input_dir.iterdir() if item.is_dir())
+    if len(subdirs) == 1:
+        subdir_csv_files = sorted(
+            item for item in subdirs[0].iterdir() if item.is_file() and item.suffix.lower() == ".csv"
+        )
+        if subdir_csv_files:
+            print(f"Detected subfolder {subdirs[0]} with CSV files; using it")
+            return subdirs[0]
+
+    return input_dir
+
+
 def months_since(start_date: str) -> int:
     started = datetime.strptime(start_date, "%Y-%m-%d").date()
     today = date.today()
@@ -88,9 +120,11 @@ def score_record(
 
 
 def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int) -> list[dict[str, Any]]:
-    enterprises = read_csv(input_dir / "enterprises.csv")
-    establishments = read_csv(input_dir / "establishments.csv")
-    activities = read_csv(input_dir / "activities.csv")
+    resolved_input_dir = detect_input_dir(input_dir)
+
+    enterprises = read_csv(find_input_file(resolved_input_dir, ["enterprises.csv", "enterprise.csv"]))
+    establishments = read_csv(find_input_file(resolved_input_dir, ["establishments.csv", "establishment.csv"]))
+    activities = read_csv(find_input_file(resolved_input_dir, ["activities.csv", "activity.csv"]))
 
     establishment_by_enterprise = {
         row["enterprise_number"].strip(): row for row in establishments if row.get("enterprise_number", "").strip()
@@ -103,7 +137,7 @@ def build_records(input_dir: Path, selected_postcodes: set[str], max_months: int
         if enterprise_number and nace_code:
             activities_by_enterprise.setdefault(enterprise_number, []).append(nace_code)
 
-    source_version = input_dir.name
+    source_version = resolved_input_dir.name
     records: list[dict[str, Any]] = []
 
     for enterprise in enterprises:
