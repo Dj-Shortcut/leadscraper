@@ -182,6 +182,144 @@ def normalize_identifier(value: str) -> str:
     return re.sub(r"\D", "", str(value or "").strip().strip('"').strip("'"))
 
 
+def normalize_id(value: str | None) -> str:
+    """Normalize enterprise/establishment identifiers to digits-only format."""
+    return normalize_identifier(value or "")
+
+
+def _first_non_empty(row: dict[str, str], candidates: list[str]) -> str:
+    for key in candidates:
+        value = str(row.get(key, "") or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _find_by_keywords(row: dict[str, str], keywords: list[str]) -> str:
+    for key, value in row.items():
+        lowered = key.lower()
+        if any(keyword.lower() in lowered for keyword in keywords):
+            cleaned = str(value or "").strip()
+            if cleaned:
+                return cleaned
+    return ""
+
+
+def _build_address(establishment: dict[str, str]) -> tuple[str, str, str]:
+    street = _first_non_empty(
+        establishment,
+        [
+            "street",
+            "street_nl",
+            "street_fr",
+            "street_de",
+            "street_name",
+        ],
+    ) or _find_by_keywords(establishment, ["street"])
+    house_number = _first_non_empty(establishment, ["house_number", "housenumber", "number"]) or _find_by_keywords(
+        establishment,
+        ["house", "number"],
+    )
+    box = _first_non_empty(establishment, ["box", "bus", "box_number"])
+
+    postal_code = _first_non_empty(
+        establishment,
+        ["postal_code", "postcode", "post_code", "zip_code", "zip"],
+    ) or _find_by_keywords(establishment, ["postcode", "postalcode", "post_code"])
+
+    city = _first_non_empty(
+        establishment,
+        ["city", "municipality", "municipality_nl", "municipality_fr", "municipality_de", "commune"],
+    ) or _find_by_keywords(establishment, ["municipality", "city"])
+
+    if not street:
+        legacy_address = _first_non_empty(establishment, ["address", "full_address"])
+        if legacy_address:
+            return legacy_address, postal_code, city
+
+    address_parts = [street, house_number]
+    address = " ".join(part for part in address_parts if part).strip()
+    if box:
+        address = f"{address} box {box}".strip() if address else box
+    return address, postal_code, city
+
+
+def _map_enterprise_row(raw_row: dict[str, str]) -> dict[str, str]:
+    row = normalize_row_keys(raw_row)
+    enterprise_number = normalize_id(_first_non_empty(row, ["enterprise_number", "enterprisenumber", "entity_number"]))
+    name = _first_non_empty(
+        row,
+        [
+            "name",
+            "denomination",
+            "denomination_nl",
+            "denomination_fr",
+            "legal_name",
+            "tradename",
+        ],
+    )
+    status = _first_non_empty(row, ["status", "enterprise_status"])
+    start_date = _first_non_empty(row, ["start_date", "startdate", "creation_date"])
+    postal_code = _first_non_empty(row, ["postal_code", "postcode", "post_code"])
+    city = _first_non_empty(row, ["city", "municipality", "municipality_nl", "municipality_fr"])
+    address = _first_non_empty(row, ["address", "street", "street_name"])
+    website = _first_non_empty(row, ["website", "web", "url"])
+
+    return {
+        "enterprise_number": enterprise_number,
+        "name": name,
+        "status": status,
+        "start_date": start_date,
+        "postal_code": postal_code,
+        "city": city,
+        "address": address,
+        "website": website,
+    }
+
+
+def _map_establishment_row(raw_row: dict[str, str]) -> dict[str, str]:
+    row = normalize_row_keys(raw_row)
+    enterprise_number = normalize_id(_first_non_empty(row, ["enterprise_number", "enterprisenumber", "entity_number"]))
+    establishment_number = normalize_id(
+        _first_non_empty(row, ["establishment_number", "establishmentnumber", "entity_number"])
+    )
+    address, postal_code, city = _build_address(row)
+
+    if not address:
+        address = _first_non_empty(row, ["address", "full_address"])
+
+    return {
+        "enterprise_number": enterprise_number,
+        "establishment_number": establishment_number,
+        "address": address,
+        "postal_code": postal_code,
+        "city": city,
+    }
+
+
+def _load_enterprises(
+    input_dir: Path,
+    *,
+    encoding: str = "utf-8-sig",
+    max_bad_lines: int = 1000,
+) -> list[dict[str, str]]:
+    enterprises_file = find_input_file(input_dir, INPUT_FILE_CANDIDATES["enterprise"])
+    return [_map_enterprise_row(row) for row in iter_csv_rows(enterprises_file, encoding=encoding, max_bad_lines=max_bad_lines)]
+
+
+def _load_establishments(
+    input_dir: Path,
+    *,
+    encoding: str = "utf-8-sig",
+    max_bad_lines: int = 1000,
+) -> list[dict[str, str]]:
+    establishments_file = find_input_file(input_dir, INPUT_FILE_CANDIDATES["establishment"])
+    return [
+        _map_establishment_row(row)
+        for row in iter_csv_rows(establishments_file, encoding=encoding, max_bad_lines=max_bad_lines)
+    ]
+
+
 def find_input_file(input_dir: Path, candidates: list[str]) -> Path:
     for candidate in candidates:
         candidate_path = input_dir / candidate
@@ -240,9 +378,8 @@ def load_contacts_by_enterprise(
 
     establishment_to_enterprise: dict[str, str] = {}
     for row in establishments:
-        normalized_row = normalize_row_keys(row)
-        establishment_number = normalize_identifier(normalized_row.get("establishment_number") or "")
-        enterprise_number = normalize_identifier(normalized_row.get("enterprise_number") or "")
+        establishment_number = normalize_id(row.get("establishment_number") or "")
+        enterprise_number = normalize_id(row.get("enterprise_number") or "")
         if establishment_number and enterprise_number:
             establishment_to_enterprise[establishment_number] = enterprise_number
 
@@ -250,7 +387,7 @@ def load_contacts_by_enterprise(
     for raw_row in iter_csv_rows(contacts_file, encoding=encoding, max_bad_lines=max_bad_lines):
         row = normalize_row_keys(raw_row)
 
-        entity_number = normalize_identifier(
+        entity_number = normalize_id(
             row.get("entitynumber")
             or row.get("entity_number")
             or row.get("enterprise_number")
@@ -259,10 +396,6 @@ def load_contacts_by_enterprise(
         )
         entity_contact = (row.get("entitycontact") or row.get("entity_contact") or "").strip().upper()
         contact_type = (row.get("contacttype") or row.get("contact_type") or "").strip().upper()
-        contact_value = (row.get("value") or row.get("phone") or row.get("email") or row.get("website") or "").strip()
-
-        if contact_type not in {"TEL", "EMAIL", "WEB"} or not contact_value:
-            continue
 
         enterprise_number = ""
         is_establishment = entity_contact in {"EST", "ESTABLISHMENT", "VESTIGING"}
@@ -278,13 +411,27 @@ def load_contacts_by_enterprise(
             enterprise_number,
             {"phone": "", "email": "", "website": "", "has_website": "no"},
         )
-        if contact_type == "TEL" and not existing["phone"]:
-            existing["phone"] = contact_value
-        if contact_type == "EMAIL" and not existing["email"]:
-            existing["email"] = contact_value
-        if contact_type == "WEB" and not existing["website"]:
-            existing["website"] = contact_value
-            existing["has_website"] = "yes"
+
+        if contact_type in {"TEL", "EMAIL", "WEB", "FAX"}:
+            contact_value = (row.get("value") or "").strip()
+            if contact_type == "TEL" and contact_value and not existing["phone"]:
+                existing["phone"] = contact_value
+            if contact_type == "EMAIL" and contact_value and not existing["email"]:
+                existing["email"] = contact_value
+            if contact_type == "WEB" and contact_value and not existing["website"]:
+                existing["website"] = contact_value
+                existing["has_website"] = "yes"
+        else:
+            phone_value = (row.get("phone") or "").strip()
+            email_value = (row.get("email") or "").strip()
+            website_value = (row.get("website") or row.get("web") or "").strip()
+            if phone_value and not existing["phone"]:
+                existing["phone"] = phone_value
+            if email_value and not existing["email"]:
+                existing["email"] = email_value
+            if website_value and not existing["website"]:
+                existing["website"] = website_value
+                existing["has_website"] = "yes"
 
         contacts_by_enterprise[enterprise_number] = existing
 
@@ -355,21 +502,29 @@ def build_records(
     if verbose:
         print(_format_detected_files(resolved_input_dir))
 
-    enterprises = read_csv(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["enterprise"]))
-    establishments = read_csv(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["establishment"]))
+    enterprises = _load_enterprises(resolved_input_dir)
+    establishments = _load_establishments(resolved_input_dir)
     contacts_by_enterprise = load_contacts_by_enterprise(resolved_input_dir, establishments)
 
+    if verbose:
+        print(f"Loaded counts: enterprises={len(enterprises)}, establishments={len(establishments)}, contacts={len(contacts_by_enterprise)}")
+
     establishment_by_enterprise = {
-        normalize_identifier(row["enterprise_number"]): row
+        normalize_id(row["enterprise_number"]): row
         for row in establishments
-        if normalize_identifier(row.get("enterprise_number", ""))
+        if normalize_id(row.get("enterprise_number", ""))
     }
 
     activities_by_enterprise: dict[str, list[str]] = {}
     if not lite:
         for row in iter_csv_rows(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["activity"])):
             normalized_row = normalize_row_keys(row)
-            enterprise_number = normalize_identifier(normalized_row.get("enterprise_number", ""))
+            enterprise_number = normalize_id(
+                normalized_row.get("enterprise_number")
+                or normalized_row.get("enterprisenumber")
+                or normalized_row.get("entity_number")
+                or ""
+            )
             nace_code = (normalized_row.get("nace_code") or "").strip()
             if enterprise_number and nace_code:
                 activities_by_enterprise.setdefault(enterprise_number, []).append(nace_code)
@@ -378,7 +533,7 @@ def build_records(
     records: list[dict[str, Any]] = []
 
     for enterprise in enterprises:
-        enterprise_number = normalize_identifier(enterprise.get("enterprise_number", ""))
+        enterprise_number = normalize_id(enterprise.get("enterprise_number", ""))
         est = establishment_by_enterprise.get(enterprise_number, {})
         contact = contacts_by_enterprise.get(
             enterprise_number,
@@ -444,6 +599,30 @@ def build_records(
         }
         validate_record(record)
         records.append(record)
+
+    if verbose and enterprises:
+        with_establishment = sum(1 for enterprise in enterprises if establishment_by_enterprise.get(enterprise["enterprise_number"]))
+        with_contact = sum(1 for enterprise in enterprises if contacts_by_enterprise.get(enterprise["enterprise_number"]))
+        establishment_ratio = (with_establishment / len(enterprises)) * 100
+        contact_ratio = (with_contact / len(enterprises)) * 100
+        print(
+            "Join stats: "
+            f"enterprises_with_establishment={with_establishment}/{len(enterprises)} ({establishment_ratio:.1f}%), "
+            f"enterprises_with_contact={with_contact}/{len(enterprises)} ({contact_ratio:.1f}%)"
+        )
+        preview = [
+            {
+                "enterprise_number": row["enterprise_number"],
+                "name": row["name"],
+                "postal_code": row["postal_code"],
+                "city": row["city"],
+                "phone": row["phone"],
+                "email": row["email"],
+                "website": row["website"],
+            }
+            for row in records[:3]
+        ]
+        print(f"Preview (first {len(preview)} records): {preview}")
 
     return records
 

@@ -328,3 +328,39 @@ def test_main_lite_mode_sets_min_score_to_zero(monkeypatch: pytest.MonkeyPatch, 
     content = output_path.read_text(encoding="utf-8")
     assert "enterprise_number" in content
     assert "0200362210" in content
+
+
+def test_build_records_maps_kbo_pascal_case_and_dotted_identifiers(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "enterprises.csv").write_text(
+        "EnterpriseNumber;Status;StartDate;Denomination\n"
+        "0123.456.789;ACTIVE;2026-01-01;KBO Alpha\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "establishments.csv").write_text(
+        "EnterpriseNumber;EstablishmentNumber;StreetNL;HouseNumber;Box;PostCode;MunicipalityNL\n"
+        "0123.456.789;2.123.456.789;Nieuwstraat;10;A;9400;Ninove\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "contact.csv").write_text(
+        "EntityNumber;EntityContact;ContactType;Value\n"
+        "2.123.456.789;EST;TEL;+321234\n"
+        "2.123.456.789;EST;EMAIL;alpha@example.com\n"
+        "2.123.456.789;EST;WEB;https://alpha.example\n",
+        encoding="utf-8",
+    )
+
+    records = build_records(tmp_path, selected_postcodes={"9400"}, max_months=18, lite=True, verbose=True)
+
+    captured = capsys.readouterr()
+    assert "Loaded counts:" in captured.out
+    assert "Join stats:" in captured.out
+    assert "Preview (first" in captured.out
+    assert len(records) == 1
+    assert records[0]["enterprise_number"] == "0123456789"
+    assert records[0]["name"] == "KBO Alpha"
+    assert records[0]["address"] == "Nieuwstraat 10 box A"
+    assert records[0]["postal_code"] == "9400"
+    assert records[0]["city"] == "Ninove"
+    assert records[0]["phone"] == "+321234"
+    assert records[0]["email"] == "alpha@example.com"
+    assert records[0]["website"] == "https://alpha.example"
