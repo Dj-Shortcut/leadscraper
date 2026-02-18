@@ -26,7 +26,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def detect_delimiter(path: Path, fallback: str = ";") -> str:
-    with path.open("r", encoding="utf-8", newline="") as handle:
+    with path.open("r", encoding="utf-8-sig", errors="ignore", newline="") as handle:
         sample = handle.read(4_096)
 
     if not sample:
@@ -40,8 +40,12 @@ def detect_delimiter(path: Path, fallback: str = ";") -> str:
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
-    delimiter = detect_delimiter(path)
-    with path.open("r", encoding="utf-8", newline="") as handle:
+    try:
+        delimiter = detect_delimiter(path)
+    except (csv.Error, OSError):
+        delimiter = ";"
+
+    with path.open("r", encoding="utf-8-sig", errors="ignore", newline="") as handle:
         return list(csv.DictReader(handle, delimiter=delimiter))
 
 
