@@ -13,6 +13,7 @@ from typing import Any, Iterator
 
 from .config import TARGET_POSTCODES
 from .export import export_leads
+from .integrations import build_drive_download_url, download_file, extract_zip_file, upload_csv_to_google_sheet
 from .transform import bucket_from_nace
 from .validate import validate_record
 
@@ -42,7 +43,40 @@ def parse_args() -> argparse.Namespace:
         help="Lite mode: skip activities.csv/NACE verwerking en bouw leads op basis van identiteit + contact",
     )
     parser.add_argument("--verbose", action="store_true", help="Toon detectie-info over inputbestanden")
+    parser.add_argument("--input-drive-zip", default="", help="Google Drive link naar ZIP met bron-CSV's")
+    parser.add_argument(
+        "--download-dir",
+        default="data/downloads",
+        help="Lokale map voor gedownloade en uitgepakte bestanden",
+    )
+    parser.add_argument(
+        "--sheet-url",
+        default="",
+        help="Google Sheet URL om output naar tabblad te pushen (vereist GOOGLE_SERVICE_ACCOUNT_JSON)",
+    )
+    parser.add_argument("--sheet-tab", default="Leads", help="Google Sheet tabbladnaam voor upload")
     return parser.parse_args()
+
+
+def resolve_input_dir(args: argparse.Namespace) -> Path:
+    if not args.input_drive_zip:
+        return Path(args.input)
+
+    download_root = Path(args.download_dir)
+    zip_path = download_root / "kbo_dump.zip"
+    extracted_dir = download_root / "extracted"
+
+    download_url = build_drive_download_url(args.input_drive_zip)
+    try:
+        download_file(download_url, zip_path)
+        extract_zip_file(zip_path, extracted_dir)
+        return extracted_dir
+    except OSError as err:
+        fallback_input = Path(args.input)
+        if fallback_input.exists():
+            print(f"WARNING: failed to download/extract Drive ZIP ({err}). Falling back to --input: {fallback_input}")
+            return fallback_input
+        raise
 
 
 def detect_delimiter(path: Path, fallback: str = ";") -> str:
@@ -629,7 +663,7 @@ def build_records(
 
 def main() -> None:
     args = parse_args()
-    input_dir = Path(args.input)
+    input_dir = resolve_input_dir(args)
     output_file = Path(args.output)
     selected_postcodes = parse_postcodes(args.postcodes)
 
@@ -648,6 +682,13 @@ def main() -> None:
         filtered = filtered[: args.limit]
 
     export_leads(output_path=output_file, records=filtered, total_records=total_records)
+
+    if args.sheet_url:
+        try:
+            upload_csv_to_google_sheet(sheet_url=args.sheet_url, csv_path=output_file, worksheet_name=args.sheet_tab)
+            print(f"Uploaded leads to Google Sheet tab '{args.sheet_tab}'")
+        except (RuntimeError, OSError) as err:
+            print(f"WARNING: unable to upload to Google Sheet: {err}")
 
 
 if __name__ == "__main__":
