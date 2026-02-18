@@ -258,3 +258,71 @@ def test_iter_csv_rows_falls_back_to_latin_1_encoding(tmp_path: Path) -> None:
 
     rows = list(iter_csv_rows(csv_path, encoding="utf-8-sig"))
     assert rows == [{"enterprise_number": "1", "name": "café"}]
+
+
+
+def test_build_records_lite_mode_without_activities_file(tmp_path: Path) -> None:
+    (tmp_path / "enterprises.csv").write_text(
+        "enterprise_number;name;status;start_date;postal_code;city\n"
+        "0200362210;Beta;ACTIVE;2026-01-01;9400;Ninove\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "establishments.csv").write_text(
+        "enterprise_number;establishment_number;address;postal_code;city\n"
+        "0200362210;2.123.456.789;Main street 2;9400;Ninove\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "contact.csv").write_text(
+        "EntityNumber;EntityContact;ContactType;Value\n"
+        "\"2.123.456.789\";EST;TEL;+3211223344\n"
+        "\"2.123.456.789\";EST;EMAIL;hello@beta.example\n"
+        "\"2.123.456.789\";EST;WEB;https://beta.example\n",
+        encoding="utf-8",
+    )
+
+    records = build_records(tmp_path, selected_postcodes={"9400"}, max_months=18, lite=True)
+
+    assert len(records) == 1
+    assert records[0]["enterprise_number"] == "0200362210"
+    assert records[0]["phone"] == "+3211223344"
+    assert records[0]["email"] == "hello@beta.example"
+    assert records[0]["website"] == "https://beta.example"
+    assert records[0]["nace_codes"] == ""
+    assert records[0]["sector_bucket"] == ""
+    assert records[0]["score_total"] == 0
+    assert "lite_mode" in records[0]["score_reasons"]
+
+
+def test_main_lite_mode_sets_min_score_to_zero(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    input_dir = tmp_path / "raw"
+    input_dir.mkdir(parents=True)
+
+    (input_dir / "enterprises.csv").write_text(
+        "enterprise_number;name;status;start_date;postal_code;city\n"
+        "0200362210;Beta;ACTIVE;2026-01-01;9400;Ninove\n",
+        encoding="utf-8",
+    )
+    (input_dir / "establishments.csv").write_text(
+        "enterprise_number;address;postal_code;city\n"
+        "0200362210;Main street 2;9400;Ninove\n",
+        encoding="utf-8",
+    )
+
+    output_path = tmp_path / "leads_lite.csv"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "cli",
+            "--input",
+            str(input_dir),
+            "--output",
+            str(output_path),
+            "--lite",
+        ],
+    )
+
+    cli.main()
+
+    content = output_path.read_text(encoding="utf-8")
+    assert "enterprise_number" in content
+    assert "0200362210" in content

@@ -9,7 +9,7 @@ Lead Radar verwerkt KBO Open Data CSV-dumps naar een geprioriteerde lead-lijst.
 3. Plaats de bronbestanden met deze namen (enkelvoud of meervoud werkt):
    - `enterprises.csv` of `enterprise.csv`
    - `establishments.csv` of `establishment.csv`
-   - `activities.csv` of `activity.csv`
+   - `activities.csv` of `activity.csv` (niet nodig in `--lite` mode)
    - optioneel: `contacts.csv` of `contact.csv` (KBO contact-schema)
 
 De tool detecteert automatisch welke variant aanwezig is.
@@ -47,6 +47,9 @@ Real run:
 
 ```bash
 python -m src.cli --input data/raw --output data/processed/leads_ninove.csv --min-score 40
+
+# Lite mode (zonder activities.csv)
+python -m src.cli --input data/raw --output data/processed/leads_ninove_lite.csv --lite
 ```
 
 Met filters:
