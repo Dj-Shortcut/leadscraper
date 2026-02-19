@@ -20,6 +20,8 @@ def test_fixture_smoke_build_records_parses_expected_fields() -> None:
     assert record["phone"] == "+32111222333"
     assert record["email"] == "hello@fixture-salon.example"
     assert record["status"] == "ACTIVE"
+    assert record["postal_code"] == "9400"
+    assert record["city"] == "Ninove"
 
 
 def test_cli_main_end_to_end_writes_expected_output(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -53,3 +55,11 @@ def test_cli_main_end_to_end_writes_expected_output(monkeypatch: pytest.MonkeyPa
     assert first["enterprise_number"] == "0123456789"
     assert first["sector_bucket"] == "beauty"
     assert first["email"] == "hello@fixture-salon.example"
+
+
+def test_normalize_key_maps_kbo_aliases() -> None:
+    assert cli.normalize_key("Zipcode") == "postal_code"
+    assert cli.normalize_key("MunicipalityNL") == "city"
+    assert cli.normalize_key("MunicipalityFR") == "city_fr"
+    assert cli.normalize_key("StreetNL") == "street"
+    assert cli.normalize_key("HouseNumber") == "house_number"

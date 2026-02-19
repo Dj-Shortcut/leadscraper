@@ -35,6 +35,8 @@ Contactbestand verwacht velden volgens KBO-schema:
 
 > Verwacht CSV met `;` als delimiter (KBO-stijl). De CLI detecteert automatisch delimiter en leest ook komma-CSV indien nodig.
 
+> KBO `address.csv` gebruikt vaak kolomnamen zoals `Zipcode`; de CLI mapt dit intern naar `postal_code` (en o.a. `MunicipalityNL` naar `city`).
+
 Voorbeeld:
 
 ```bash
