@@ -1,2 +1,2 @@
-enterprise_number;establishment_number;address;postal_code;city
-0123456789;2.111.222.333;Stationsstraat 1;9400;Ninove
+enterprise_number;establishment_number;start_date
+0123456789;2.111.222.333;01-01-2099

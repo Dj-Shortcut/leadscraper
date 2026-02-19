@@ -24,6 +24,7 @@ LARGE_CSV_WARNING_BYTES = 1_000_000_000
 INPUT_FILE_CANDIDATES: dict[str, list[str]] = {
     "enterprise": ["enterprises.csv", "enterprise.csv"],
     "establishment": ["establishments.csv", "establishment.csv"],
+    "address": ["addresses.csv", "address.csv"],
     "activity": ["activities.csv", "activity.csv"],
     "contact": ["contacts.csv", "contact.csv"],
 }
@@ -269,7 +270,7 @@ def _build_address(establishment: dict[str, str]) -> tuple[str, str, str]:
     ) or _find_by_keywords(establishment, ["street"])
     house_number = _first_non_empty(establishment, ["house_number", "housenumber", "number"]) or _find_by_keywords(
         establishment,
-        ["house", "number"],
+        ["house"],
     )
     box = _first_non_empty(establishment, ["box", "bus", "box_number"])
 
@@ -372,6 +373,53 @@ def _load_establishments(
         _map_establishment_row(row)
         for row in iter_csv_rows_normalized(establishments_file, encoding=encoding, max_bad_lines=max_bad_lines)
     ]
+
+
+def load_addresses_by_establishment(
+    input_dir: Path,
+    *,
+    encoding: str = "utf-8-sig",
+    max_bad_lines: int = 1000,
+) -> dict[str, dict[str, str]]:
+    try:
+        address_file = find_input_file(input_dir, INPUT_FILE_CANDIDATES["address"])
+    except FileNotFoundError:
+        return {}
+
+    addresses_by_establishment: dict[str, dict[str, str]] = {}
+    for row in iter_csv_rows(address_file, encoding=encoding, max_bad_lines=max_bad_lines):
+        normalized_row = normalize_row_keys(row)
+        establishment_number = normalize_id(
+            _first_non_empty(
+                normalized_row,
+                [
+                    "establishment_number",
+                    "establishmentnumber",
+                    "entity_number",
+                ],
+            )
+            or _find_by_keywords(normalized_row, ["establishment"])
+        )
+        if not establishment_number:
+            continue
+
+        address, postal_code, city = _build_address(normalized_row)
+        if not address and not postal_code:
+            continue
+
+        addresses_by_establishment[establishment_number] = {
+            "address": address,
+            "postal_code": postal_code,
+            "city": city,
+        }
+
+    return addresses_by_establishment
+
+
+def normalize_status(value: str) -> str:
+    mapping = {"AC": "ACTIVE", "IN": "INACTIVE"}
+    cleaned = str(value or "").strip()
+    return mapping.get(cleaned.upper(), cleaned)
 
 
 def find_input_file(input_dir: Path, candidates: list[str]) -> Path:
@@ -578,6 +626,18 @@ def build_records(
 
     enterprises = _load_enterprises(resolved_input_dir)
     establishments = _load_establishments(resolved_input_dir)
+    addresses_by_establishment = load_addresses_by_establishment(resolved_input_dir)
+    for establishment in establishments:
+        establishment_number = normalize_id(establishment.get("establishment_number", ""))
+        if not establishment_number:
+            continue
+        address_data = addresses_by_establishment.get(establishment_number)
+        if not address_data:
+            continue
+        establishment["address"] = establishment.get("address") or address_data.get("address", "")
+        establishment["postal_code"] = establishment.get("postal_code") or address_data.get("postal_code", "")
+        establishment["city"] = establishment.get("city") or address_data.get("city", "")
+
     contacts_by_enterprise = load_contacts_by_enterprise(resolved_input_dir, establishments)
 
     if verbose:
@@ -659,7 +719,7 @@ def build_records(
         record = {
             "enterprise_number": enterprise_number,
             "name": enterprise.get("name", "").strip(),
-            "status": enterprise.get("status", "").strip(),
+            "status": normalize_status(enterprise.get("status", "")),
             "start_date": start_date,
             "address": (est.get("address") or enterprise.get("address") or "").strip(),
             "postal_code": postal_code,
