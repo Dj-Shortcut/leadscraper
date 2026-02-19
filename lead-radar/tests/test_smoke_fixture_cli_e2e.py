@@ -19,6 +19,7 @@ def test_fixture_smoke_build_records_parses_expected_fields() -> None:
     assert record["sector_bucket"] == "beauty"
     assert record["phone"] == "+32111222333"
     assert record["email"] == "hello@fixture-salon.example"
+    assert record["status"] == "ACTIVE"
 
 
 def test_cli_main_end_to_end_writes_expected_output(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
