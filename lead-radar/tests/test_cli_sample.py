@@ -341,6 +341,39 @@ def test_build_records_lite_mode_without_activities_file(tmp_path: Path) -> None
     assert "lite_mode" in records[0]["score_reasons"]
 
 
+
+
+def test_build_records_limit_applies_after_postcode_and_month_filters(tmp_path: Path) -> None:
+    (tmp_path / "enterprises.csv").write_text(
+        "enterprise_number;name;status;start_date;postal_code;city\n"
+        "0200362201;Old Co;ACTIVE;2000-01-01;9400;Ninove\n"
+        "0200362202;Wrong Zip;ACTIVE;2026-01-01;9500;Geraardsbergen\n"
+        "0200362203;Fresh Co;ACTIVE;2026-01-01;9400;Ninove\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "establishments.csv").write_text(
+        "enterprise_number;address;postal_code;city\n"
+        "0200362201;Old street 1;9400;Ninove\n"
+        "0200362202;Wrong street 2;9500;Geraardsbergen\n"
+        "0200362203;Fresh street 3;9400;Ninove\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "activities.csv").write_text(
+        "enterprise_number;nace_code\n"
+        "0200362203;96021\n",
+        encoding="utf-8",
+    )
+
+    records = build_records(
+        tmp_path,
+        selected_postcodes={"9400"},
+        max_months=18,
+        min_score=0,
+        limit=1,
+    )
+
+    assert len(records) == 1
+    assert records[0]["enterprise_number"] == "0200362203"
 def test_main_lite_mode_sets_min_score_to_zero(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     input_dir = tmp_path / "raw"
     input_dir.mkdir(parents=True)
