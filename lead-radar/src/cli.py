@@ -554,6 +554,8 @@ def build_records(
     selected_postcodes: set[str],
     max_months: int,
     *,
+    min_score: int = 0,
+    limit: int | None = None,
     verbose: bool = False,
     lite: bool = False,
 ) -> list[dict[str, Any]]:
@@ -608,6 +610,8 @@ def build_records(
         in_postcode_set = not selected_postcodes or postal_code in selected_postcodes
         if selected_postcodes and not in_postcode_set:
             continue
+        if age_months is None or age_months > max_months:
+            continue
 
         nace_codes = activities_by_enterprise.get(enterprise_number, []) if not lite else []
         first_nace_code = nace_codes[0] if nace_codes else None
@@ -656,8 +660,12 @@ def build_records(
             "score_reasons": score_reasons,
             "source_files_version": source_version,
         }
+        if int(record["score_total"]) < min_score:
+            continue
         validate_record(record)
         records.append(record)
+        if limit is not None and limit > 0 and len(records) >= limit:
+            break
 
     if verbose and enterprises:
         with_establishment = sum(1 for enterprise in enterprises if establishment_by_enterprise.get(enterprise["enterprise_number"]))
@@ -692,21 +700,19 @@ def main() -> None:
     output_file = Path(args.output)
     selected_postcodes = parse_postcodes(args.postcodes)
 
+    min_score = 0 if args.lite else args.min_score
     records = build_records(
         input_dir=input_dir,
         selected_postcodes=selected_postcodes,
         max_months=args.months,
+        min_score=min_score,
+        limit=args.limit,
         verbose=args.verbose,
         lite=args.lite,
     )
     total_records = len(records)
 
-    min_score = 0 if args.lite else args.min_score
-    filtered = [row for row in records if int(row["score_total"]) >= min_score]
-    if args.limit > 0:
-        filtered = filtered[: args.limit]
-
-    export_leads(output_path=output_file, records=filtered, total_records=total_records)
+    export_leads(output_path=output_file, records=records, total_records=total_records)
 
     if args.sheet_url:
         try:
