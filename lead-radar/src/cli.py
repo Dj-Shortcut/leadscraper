@@ -431,6 +431,11 @@ def normalize_status(value: str) -> str:
     return mapping.get(cleaned.upper(), cleaned)
 
 
+def is_active_status(value: str) -> bool:
+    cleaned = str(value or "").strip().upper()
+    return cleaned == "AC" or normalize_status(cleaned) == "ACTIVE"
+
+
 def find_input_file(input_dir: Path, candidates: list[str]) -> Path:
     for candidate in candidates:
         candidate_path = input_dir / candidate
@@ -675,14 +680,26 @@ def build_records(
 
     source_version = resolved_input_dir.name
     records: list[dict[str, Any]] = []
+    active_enterprises_kept = 0
+    join_with_establishment_kept = 0
+    join_with_contact_kept = 0
+    postcode_filter_kept = 0
 
     for enterprise in enterprises:
+        if not is_active_status(enterprise.get("status", "")):
+            continue
+        active_enterprises_kept += 1
+
         enterprise_number = normalize_id(enterprise.get("enterprise_number", ""))
         est = establishment_by_enterprise.get(enterprise_number, {})
+        if est:
+            join_with_establishment_kept += 1
         contact = contacts_by_enterprise.get(
             enterprise_number,
             {"phone": "", "email": "", "website": "", "has_website": "no"},
         )
+        if contacts_by_enterprise.get(enterprise_number):
+            join_with_contact_kept += 1
 
         postal_code = (est.get("postal_code") or enterprise.get("postal_code") or "").strip()
         start_date = enterprise.get("start_date", "").strip()
@@ -693,6 +710,7 @@ def build_records(
         in_postcode_set = not selected_postcodes or postal_code in selected_postcodes
         if selected_postcodes and not in_postcode_set:
             continue
+        postcode_filter_kept += 1
         if age_months is None or age_months > max_months:
             continue
 
@@ -751,6 +769,12 @@ def build_records(
             break
 
     if verbose and enterprises:
+        print(f"Verbose counters: enterprises loaded={len(enterprises)}")
+        print(f"Verbose counters: enterprises kept after active-filter={active_enterprises_kept}")
+        print(f"Verbose counters: after join with establishment={join_with_establishment_kept}")
+        print(f"Verbose counters: after join with contact={join_with_contact_kept}")
+        print(f"Verbose counters: after postcode filter={postcode_filter_kept}")
+
         with_establishment = sum(1 for enterprise in enterprises if establishment_by_enterprise.get(enterprise["enterprise_number"]))
         with_contact = sum(1 for enterprise in enterprises if contacts_by_enterprise.get(enterprise["enterprise_number"]))
         establishment_ratio = (with_establishment / len(enterprises)) * 100

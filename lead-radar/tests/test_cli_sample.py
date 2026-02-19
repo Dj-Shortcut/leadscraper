@@ -480,6 +480,11 @@ def test_build_records_maps_kbo_pascal_case_and_dotted_identifiers(tmp_path: Pat
 
     captured = capsys.readouterr()
     assert "Loaded counts:" in captured.out
+    assert "enterprises loaded=" in captured.out
+    assert "enterprises kept after active-filter=" in captured.out
+    assert "after join with establishment=" in captured.out
+    assert "after join with contact=" in captured.out
+    assert "after postcode filter=" in captured.out
     assert "Join stats:" in captured.out
     assert "Preview (first" in captured.out
     assert len(records) == 1
@@ -491,6 +496,36 @@ def test_build_records_maps_kbo_pascal_case_and_dotted_identifiers(tmp_path: Pat
     assert records[0]["phone"] == "+321234"
     assert records[0]["email"] == "alpha@example.com"
     assert records[0]["website"] == "https://alpha.example"
+
+
+def test_build_records_keeps_ac_and_active_statuses_and_skips_inactive(tmp_path: Path) -> None:
+    (tmp_path / "enterprises.csv").write_text(
+        "enterprise_number;name;status;start_date;postal_code;city\n"
+        "0200362201;Ac Co;AC;2026-01-01;9400;Ninove\n"
+        "0200362202;Active Co;ACTIVE;2026-01-01;9400;Ninove\n"
+        "0200362203;Inactive Co;IN;2026-01-01;9400;Ninove\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "establishments.csv").write_text(
+        "enterprise_number;address;postal_code;city\n"
+        "0200362201;Ac street 1;9400;Ninove\n"
+        "0200362202;Active street 2;9400;Ninove\n"
+        "0200362203;Inactive street 3;9400;Ninove\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "activities.csv").write_text(
+        "enterprise_number;nace_code\n"
+        "0200362201;96021\n"
+        "0200362202;96021\n"
+        "0200362203;96021\n",
+        encoding="utf-8",
+    )
+
+    records = build_records(tmp_path, selected_postcodes={"9400"}, max_months=18, min_score=0)
+
+    assert len(records) == 2
+    assert {record["enterprise_number"] for record in records} == {"0200362201", "0200362202"}
+    assert all(record["status"] == "ACTIVE" for record in records)
 
 
 def test_resolve_input_dir_downloads_and_extracts_zip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
