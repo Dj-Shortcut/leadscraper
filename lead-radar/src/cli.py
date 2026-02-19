@@ -219,6 +219,16 @@ def normalize_row_keys(row: dict[str, str]) -> dict[str, str]:
     return {normalize_key(key): value for key, value in row.items()}
 
 
+def iter_csv_rows_normalized(
+    path: Path,
+    *,
+    encoding: str = "utf-8-sig",
+    max_bad_lines: int = 1000,
+) -> Iterator[dict[str, str]]:
+    for row in iter_csv_rows(path, encoding=encoding, max_bad_lines=max_bad_lines):
+        yield normalize_row_keys(row)
+
+
 def normalize_identifier(value: str) -> str:
     return re.sub(r"\D", "", str(value or "").strip().strip('"').strip("'"))
 
@@ -286,7 +296,7 @@ def _build_address(establishment: dict[str, str]) -> tuple[str, str, str]:
 
 
 def _map_enterprise_row(raw_row: dict[str, str]) -> dict[str, str]:
-    row = normalize_row_keys(raw_row)
+    row = raw_row
     enterprise_number = normalize_id(_first_non_empty(row, ["enterprise_number", "enterprisenumber", "entity_number"]))
     name = _first_non_empty(
         row,
@@ -319,7 +329,7 @@ def _map_enterprise_row(raw_row: dict[str, str]) -> dict[str, str]:
 
 
 def _map_establishment_row(raw_row: dict[str, str]) -> dict[str, str]:
-    row = normalize_row_keys(raw_row)
+    row = raw_row
     enterprise_number = normalize_id(_first_non_empty(row, ["enterprise_number", "enterprisenumber", "entity_number"]))
     establishment_number = normalize_id(
         _first_non_empty(row, ["establishment_number", "establishmentnumber", "entity_number"])
@@ -345,7 +355,10 @@ def _load_enterprises(
     max_bad_lines: int = 1000,
 ) -> list[dict[str, str]]:
     enterprises_file = find_input_file(input_dir, INPUT_FILE_CANDIDATES["enterprise"])
-    return [_map_enterprise_row(row) for row in iter_csv_rows(enterprises_file, encoding=encoding, max_bad_lines=max_bad_lines)]
+    return [
+        _map_enterprise_row(row)
+        for row in iter_csv_rows_normalized(enterprises_file, encoding=encoding, max_bad_lines=max_bad_lines)
+    ]
 
 
 def _load_establishments(
@@ -357,7 +370,7 @@ def _load_establishments(
     establishments_file = find_input_file(input_dir, INPUT_FILE_CANDIDATES["establishment"])
     return [
         _map_establishment_row(row)
-        for row in iter_csv_rows(establishments_file, encoding=encoding, max_bad_lines=max_bad_lines)
+        for row in iter_csv_rows_normalized(establishments_file, encoding=encoding, max_bad_lines=max_bad_lines)
     ]
 
 
