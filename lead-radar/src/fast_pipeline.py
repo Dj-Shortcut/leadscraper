@@ -16,9 +16,9 @@ from .cli import (
     detect_input_dir,
     find_input_file,
     is_active_status,
-    load_addresses_by_establishment,
     load_contacts_by_enterprise,
     load_denominations_by_enterprise,
+    months_since,
     normalize_id,
     normalize_key,
     normalize_postal_code,
@@ -27,6 +27,117 @@ from .cli import (
 )
 from .transform import bucket_from_nace
 from .validate import validate_record
+
+ADDRESS_USECOLS = [
+    "EntityNumber",
+    "entity_number",
+    "entitynumber",
+    "EstablishmentNumber",
+    "establishment_number",
+    "establishmentnumber",
+    "Zipcode",
+    "postal_code",
+    "postcode",
+    "post_code",
+    "zip_code",
+    "zip",
+    "MunicipalityNL",
+    "MunicipalityFR",
+    "city",
+    "street",
+    "street_nl",
+    "street_fr",
+    "StreetNL",
+    "StreetFR",
+    "HouseNumber",
+    "house_number",
+    "housenumber",
+    "number",
+    "box",
+    "bus",
+    "box_number",
+    "address",
+    "full_address",
+]
+
+ESTABLISHMENT_USECOLS = [
+    "EnterpriseNumber",
+    "enterprise_number",
+    "enterprisenumber",
+    "entity_number",
+    "EstablishmentNumber",
+    "establishment_number",
+    "establishmentnumber",
+    "EntityNumber",
+    "street",
+    "street_nl",
+    "street_fr",
+    "street_de",
+    "street_name",
+    "StreetNL",
+    "StreetFR",
+    "HouseNumber",
+    "house_number",
+    "housenumber",
+    "number",
+    "box",
+    "bus",
+    "box_number",
+    "Zipcode",
+    "postal_code",
+    "postcode",
+    "post_code",
+    "zip_code",
+    "zip",
+    "city",
+    "MunicipalityNL",
+    "MunicipalityFR",
+    "address",
+    "full_address",
+]
+
+ENTERPRISE_USECOLS = [
+    "EnterpriseNumber",
+    "enterprise_number",
+    "enterprisenumber",
+    "entity_number",
+    "name",
+    "Denomination",
+    "denomination",
+    "denomination_nl",
+    "denomination_fr",
+    "legal_name",
+    "tradename",
+    "status",
+    "enterprise_status",
+    "StartDate",
+    "start_date",
+    "startdate",
+    "creation_date",
+    "postal_code",
+    "postcode",
+    "post_code",
+    "city",
+    "municipality",
+    "municipality_nl",
+    "municipality_fr",
+    "address",
+    "street",
+    "street_name",
+    "website",
+    "web",
+    "url",
+]
+
+ACTIVITY_USECOLS = [
+    "EnterpriseNumber",
+    "enterprise_number",
+    "enterprisenumber",
+    "entity_number",
+    "nace_code",
+    "nace",
+    "activity_code",
+]
 
 
 def _import_pandas():
@@ -38,7 +149,7 @@ def _import_pandas():
         raise RuntimeError("--fast vereist pandas. Installeer pandas om de fast pipeline te gebruiken.") from exc
 
 
-def _iter_csv_chunks(path: Path, *, chunksize: int):
+def _iter_csv_chunks(path: Path, *, chunksize: int, usecols: list[str] | None = None):
     pd = _import_pandas()
     from .cli import detect_delimiter
 
@@ -52,10 +163,21 @@ def _iter_csv_chunks(path: Path, *, chunksize: int):
                 chunksize=chunksize,
                 keep_default_na=False,
                 encoding=encoding,
+                usecols=usecols,
             )
             return
         except UnicodeDecodeError:
             continue
+        except ValueError:
+            yield from pd.read_csv(
+                path,
+                sep=delimiter,
+                dtype=str,
+                chunksize=chunksize,
+                keep_default_na=False,
+                encoding=encoding,
+            )
+            return
 
 
 def _normalize_chunk_columns(chunk):
@@ -69,14 +191,16 @@ def _first_present_column(chunk, candidates: list[str]) -> str | None:
     return None
 
 
-def get_establishment_ids_for_postcodes(
+def _scan_addresses_for_postcodes(
     addresses_file: Path,
     postcodes_set: set[str],
     chunksize: int,
-) -> tuple[set[str], int]:
+) -> tuple[set[str], dict[str, dict[str, str]], int]:
     establishment_ids: set[str] = set()
+    addresses_by_establishment: dict[str, dict[str, str]] = {}
     scanned_rows = 0
-    for chunk in _iter_csv_chunks(addresses_file, chunksize=chunksize):
+
+    for chunk in _iter_csv_chunks(addresses_file, chunksize=chunksize, usecols=ADDRESS_USECOLS):
         chunk = _normalize_chunk_columns(chunk)
         scanned_rows += len(chunk)
 
@@ -93,26 +217,39 @@ def get_establishment_ids_for_postcodes(
         if filtered.empty:
             continue
 
-        ids = filtered[establishment_col].map(normalize_id)
-        establishment_ids.update(value for value in ids if value)
+        for row in filtered.to_dict(orient="records"):
+            establishment_number = normalize_id(row.get(establishment_col) or "")
+            if not establishment_number:
+                continue
+            mapped = _map_establishment_row(row)
+            establishment_ids.add(establishment_number)
+            addresses_by_establishment[establishment_number] = {
+                "address": mapped.get("address", ""),
+                "postal_code": mapped.get("postal_code", ""),
+                "city": mapped.get("city", ""),
+            }
 
-    return establishment_ids, scanned_rows
+    return establishment_ids, addresses_by_establishment, scanned_rows
 
 
-def get_enterprise_ids_for_establishments(
+def _scan_establishments(
     establishments_file: Path,
     establishment_ids: set[str],
     chunksize: int,
-) -> set[str]:
+) -> tuple[set[str], list[dict[str, str]], int]:
     enterprise_ids: set[str] = set()
-    if not establishment_ids:
-        return enterprise_ids
+    establishments_subset: list[dict[str, str]] = []
+    scanned_rows = 0
 
-    for chunk in _iter_csv_chunks(establishments_file, chunksize=chunksize):
+    if not establishment_ids:
+        return enterprise_ids, establishments_subset, scanned_rows
+
+    for chunk in _iter_csv_chunks(establishments_file, chunksize=chunksize, usecols=ESTABLISHMENT_USECOLS):
         chunk = _normalize_chunk_columns(chunk)
+        scanned_rows += len(chunk)
+
         establishment_col = _first_present_column(chunk, ["establishment_number", "establishmentnumber", "entity_number"])
-        enterprise_col = _first_present_column(chunk, ["enterprise_number", "enterprisenumber", "entity_number"])
-        if not establishment_col or not enterprise_col:
+        if not establishment_col:
             continue
 
         normalized_establishments = chunk[establishment_col].map(normalize_id)
@@ -120,10 +257,15 @@ def get_enterprise_ids_for_establishments(
         if filtered.empty:
             continue
 
-        ids = filtered[enterprise_col].map(normalize_id)
-        enterprise_ids.update(value for value in ids if value)
+        for row in filtered.to_dict(orient="records"):
+            mapped = _map_establishment_row(row)
+            enterprise_number = normalize_id(mapped.get("enterprise_number") or "")
+            if not enterprise_number:
+                continue
+            enterprise_ids.add(enterprise_number)
+            establishments_subset.append(mapped)
 
-    return enterprise_ids
+    return enterprise_ids, establishments_subset, scanned_rows
 
 
 def iter_enterprises_filtered(
@@ -131,7 +273,7 @@ def iter_enterprises_filtered(
     enterprise_ids_set: set[str],
     chunksize: int,
 ) -> Iterator[dict[str, str]]:
-    for chunk in _iter_csv_chunks(enterprises_file, chunksize=chunksize):
+    for chunk in _iter_csv_chunks(enterprises_file, chunksize=chunksize, usecols=ENTERPRISE_USECOLS):
         chunk = _normalize_chunk_columns(chunk)
         enterprise_col = _first_present_column(chunk, ["enterprise_number", "enterprisenumber", "entity_number"])
         if not enterprise_col:
@@ -152,7 +294,7 @@ def _load_activities_for_enterprises(
     if not enterprise_ids_set:
         return activities_by_enterprise
 
-    for chunk in _iter_csv_chunks(activity_file, chunksize=chunksize):
+    for chunk in _iter_csv_chunks(activity_file, chunksize=chunksize, usecols=ACTIVITY_USECOLS):
         chunk = _normalize_chunk_columns(chunk)
         enterprise_col = _first_present_column(chunk, ["enterprise_number", "enterprisenumber", "entity_number"])
         nace_col = _first_present_column(chunk, ["nace_code", "nace", "activity_code"])
@@ -206,20 +348,20 @@ def build_records_fast(
     enterprises_file = find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["enterprise"])
 
     t0 = perf_counter()
-    establishment_ids, address_rows_scanned = get_establishment_ids_for_postcodes(addresses_file, selected_postcodes, chunksize)
+    establishment_ids, addresses_by_establishment, address_rows_scanned = _scan_addresses_for_postcodes(
+        addresses_file,
+        selected_postcodes,
+        chunksize,
+    )
     t1 = perf_counter()
-    enterprise_ids = get_enterprise_ids_for_establishments(establishments_file, establishment_ids, chunksize)
+
+    enterprise_ids, establishments_subset, establishment_rows_scanned = _scan_establishments(
+        establishments_file,
+        establishment_ids,
+        chunksize,
+    )
     t2 = perf_counter()
 
-    establishments_subset: list[dict[str, str]] = []
-    for chunk in _iter_csv_chunks(establishments_file, chunksize=chunksize):
-        normalized_chunk = _normalize_chunk_columns(chunk)
-        for row in normalized_chunk.to_dict(orient="records"):
-            mapped = _map_establishment_row(row)
-            if normalize_id(mapped.get("enterprise_number") or "") in enterprise_ids:
-                establishments_subset.append(mapped)
-
-    addresses_by_establishment = load_addresses_by_establishment(resolved_input_dir)
     for establishment in establishments_subset:
         establishment_number = normalize_id(establishment.get("establishment_number", ""))
         if not establishment_number:
@@ -300,8 +442,6 @@ def build_records_fast(
         if not start_date:
             continue
 
-        from .cli import months_since
-
         age_months = months_since(start_date)
         if selected_postcodes and postal_code not in selected_postcodes:
             continue
@@ -367,16 +507,17 @@ def build_records_fast(
     t5 = perf_counter()
     if verbose:
         print(f"Fast counters: address rows scanned={address_rows_scanned}")
+        print(f"Fast counters: establishment rows scanned={establishment_rows_scanned}")
         print(f"Fast counters: establishments in area={len(establishment_ids)}")
         print(f"Fast counters: enterprise ids in area={len(enterprise_ids)}")
         print(f"Fast counters: enterprises scanned in subset={enterprises_processed}")
         print(f"Fast counters: enterprises kept after active-filter={active_enterprises_kept}")
         print(f"Fast counters: records output={len(records)}")
-        print(f"Fast timing: addresses->establishments={(t1 - t0):.2f}s")
-        print(f"Fast timing: establishments->enterprises={(t2 - t1):.2f}s")
-        print(f"Fast timing: enterprises filtered/processed={(t5 - t2):.2f}s")
+        print(f"Fast timing: addresses scan once={(t1 - t0):.2f}s")
+        print(f"Fast timing: establishments scan once={(t2 - t1):.2f}s")
+        print(f"Fast timing: enterprises scan once={(t5 - t2):.2f}s")
         if not lite:
-            print(f"Fast timing: activities load={(t4 - t3):.2f}s")
+            print(f"Fast timing: activities scan once={(t4 - t3):.2f}s")
         _debug_postcode_diagnostics(postcode_samples, verbose=verbose)
 
     return records

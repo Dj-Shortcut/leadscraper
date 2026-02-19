@@ -87,6 +87,11 @@ python -m src.cli --input data/raw/2026-02-18 --output data/processed/leads_nino
 ```
 
 
+Belangrijk:
+- `--limit` staat standaard op **200**. Voor eerlijke fast-vs-normal vergelijkingen gebruik je `--limit 0` zodat je de volledige dataset verwerkt.
+- De eerste 200 records volgen bestandvolgorde; daardoor kan de zichtbare `start_date` range misleidend lijken (bv. vooral nieuw of vooral oud).
+
+
 ## Google Drive ZIP + Google Sheets workflow
 
 Je kan nu rechtstreeks een publieke Google Drive ZIP downloaden en de output naar een Google Sheet sturen.
@@ -133,3 +138,28 @@ De CLI print ook een summary met:
 - aantal records totaal
 - aantal na filters
 - top 10 sector buckets
+
+## 7) Debug en parity checks
+
+Gebruik `--debug-stats` om na elke run snelle controles te printen:
+- `total_records`
+- `unique_enterprises`
+- `min_start_date` / `max_start_date`
+- sample van 10 ondernemingsnummers
+
+Voor parity (normal vs fast), run beide met `--limit 0`:
+
+```bash
+python -m src.cli --input data/raw --output data/processed/old.csv --postcodes 9400 --lite --limit 0 --verbose --debug-stats
+python -m src.cli --input data/raw --output data/processed/fast.csv --postcodes 9400 --lite --fast --limit 0 --verbose --debug-stats
+```
+
+## 8) Reproduceerbare benchmark
+
+Gebruik het benchmarkscript om runtime + output counts te vergelijken:
+
+```bash
+./scripts/benchmark.sh data/raw 9400 18 200000 data/processed
+```
+
+Dit script draait normal en fast telkens met `--limit 0` en toont runtimes + recordaantallen.

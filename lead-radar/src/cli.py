@@ -47,6 +47,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--verbose", action="store_true", help="Toon detectie-info over inputbestanden")
     parser.add_argument("--fast", action="store_true", help="Gebruik snelle postcode-pipeline met pandas chunking")
     parser.add_argument("--chunksize", type=int, default=200_000, help="Chunkgrootte voor --fast pandas reads")
+    parser.add_argument(
+        "--debug-stats",
+        action="store_true",
+        help="Print debug statistieken over output (start_date bereik, aantallen en sample ondernemingsnummers)",
+    )
     parser.add_argument("--input-drive-zip", default="", help="Google Drive link naar ZIP met bron-CSV's")
     parser.add_argument(
         "--download-dir",
@@ -986,6 +991,9 @@ def main() -> None:
         )
     total_records = len(records)
 
+    if args.debug_stats:
+        _print_debug_stats(records)
+
     export_leads(output_path=output_file, records=records, total_records=total_records)
 
     if args.sheet_url:
@@ -994,6 +1002,21 @@ def main() -> None:
             print(f"Uploaded leads to Google Sheet tab '{args.sheet_tab}'")
         except (RuntimeError, OSError) as err:
             print(f"WARNING: unable to upload to Google Sheet: {err}")
+
+
+def _print_debug_stats(records: list[dict[str, Any]]) -> None:
+    enterprise_numbers = [normalize_id(record.get("enterprise_number", "")) for record in records]
+    unique_enterprises = sorted({number for number in enterprise_numbers if number})
+
+    parsed_dates = [parsed for record in records if (parsed := parse_date(record.get("start_date")))]
+    min_start = min(parsed_dates).isoformat() if parsed_dates else "n/a"
+    max_start = max(parsed_dates).isoformat() if parsed_dates else "n/a"
+
+    print(f"Debug stats: total_records={len(records)}")
+    print(f"Debug stats: unique_enterprises={len(unique_enterprises)}")
+    print(f"Debug stats: min_start_date={min_start}")
+    print(f"Debug stats: max_start_date={max_start}")
+    print(f"Debug stats: sample_enterprise_numbers={unique_enterprises[:10]}")
 
 
 if __name__ == "__main__":
