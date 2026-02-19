@@ -187,6 +187,28 @@ def test_build_records_without_contacts_file_falls_back_gracefully(tmp_path: Pat
     assert records[0]["email"] == ""
 
 
+def test_build_records_lite_mode_supports_mixed_case_headers(tmp_path: Path) -> None:
+    (tmp_path / "enterprises.csv").write_text(
+        "EnterpriseNumber;Name;Status;StartDate;PostalCode;City;Website\n"
+        "0123456789;Acme;ACTIVE;2026-01-01;9400;Ninove;https://acme.example\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "establishments.csv").write_text(
+        "EnterpriseNumber;Address;PostalCode;City\n"
+        "0123456789;Main street 1;9400;Ninove\n",
+        encoding="utf-8",
+    )
+
+    records = build_records(tmp_path, selected_postcodes={"9400"}, max_months=18, lite=True)
+
+    assert len(records) >= 1
+    assert records[0]["enterprise_number"] == "0123456789"
+    assert records[0]["start_date"] == "2026-01-01"
+    assert records[0]["postal_code"] == "9400"
+    assert records[0]["city"] == "Ninove"
+    assert records[0]["website"] == "https://acme.example"
+
+
 def test_iter_csv_rows_falls_back_to_line_by_line_on_stream_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     csv_path = tmp_path / "broken.csv"
     csv_path.write_text(
