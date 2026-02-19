@@ -519,3 +519,17 @@ def test_resolve_input_dir_is_idempotent_when_output_dir_exists(
 
     assert resolved == existing_extracted_dir
     assert (existing_extracted_dir / "dummy.csv").exists()
+
+
+def test_months_since_supports_iso_and_kbo_date_formats() -> None:
+    iso_months = cli.months_since("1960-08-09")
+    kbo_months = cli.months_since("09-08-1960")
+
+    assert isinstance(iso_months, int)
+    assert iso_months == kbo_months
+
+
+def test_months_since_returns_none_for_invalid_or_placeholder_dates() -> None:
+    assert cli.months_since("") is None
+    assert cli.months_since("0000-00-00") is None
+    assert cli.months_since("not-a-date") is None
