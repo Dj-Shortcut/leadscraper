@@ -579,10 +579,29 @@ def parse_date(date_str: str | None) -> date | None:
 
 
 def parse_postcodes(raw: str) -> set[str]:
-    parsed = {item.strip() for item in raw.split(",") if item.strip()}
+    parsed = {
+        normalized
+        for item in raw.split(",")
+        if (normalized := normalize_postal_code(item))
+    }
     if parsed:
         return parsed
     return set(TARGET_POSTCODES)
+
+
+def normalize_postal_code(value: str | None) -> str:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return ""
+
+    if re.fullmatch(r"\d{4}", cleaned):
+        return cleaned
+
+    match = re.search(r"\b(\d{4})\b", cleaned)
+    if match:
+        return match.group(1)
+
+    return cleaned
 
 
 def _get_postcode(row: dict[str, Any]) -> str:
@@ -596,7 +615,7 @@ def _get_postcode(row: dict[str, Any]) -> str:
     )
     if value is None:
         return ""
-    return str(value).strip()
+    return normalize_postal_code(str(value))
 
 
 def score_record(

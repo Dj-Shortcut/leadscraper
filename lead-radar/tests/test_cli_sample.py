@@ -280,6 +280,33 @@ def test_build_records_merges_address_data_into_establishment(tmp_path: Path) ->
     assert records[0]["status"] == "ACTIVE"
 
 
+def test_build_records_normalizes_zipcode_variants_for_postcode_filter(tmp_path: Path) -> None:
+    (tmp_path / "enterprises.csv").write_text(
+        "enterprise_number;name;status;start_date;postal_code;city\n"
+        "0123456789;Acme;ACTIVE;2026-01-01;;Ninove\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "establishments.csv").write_text(
+        "enterprise_number;establishment_number\n"
+        "0123456789;2.123.456.789\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "address.csv").write_text(
+        "establishment_number;Zipcode;city;street;house_number\n"
+        "2.123.456.789;9400 Ninove;Ninove;Main street;9\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "activities.csv").write_text(
+        "enterprise_number;nace_code\n0123456789;96.02\n",
+        encoding="utf-8",
+    )
+
+    records = build_records(tmp_path, selected_postcodes={"9400"}, max_months=10000)
+
+    assert len(records) == 1
+    assert records[0]["postal_code"] == "9400"
+
+
 def test_iter_csv_rows_falls_back_to_line_by_line_on_stream_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     csv_path = tmp_path / "broken.csv"
     csv_path.write_text(
