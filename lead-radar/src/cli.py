@@ -576,7 +576,8 @@ def build_records(
 
     activities_by_enterprise: dict[str, list[str]] = {}
     if not lite:
-        for row in iter_csv_rows(find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["activity"])):
+        activity_file = find_input_file(resolved_input_dir, INPUT_FILE_CANDIDATES["activity"])
+        for row in iter_csv_rows(activity_file):
             normalized_row = normalize_row_keys(row)
             enterprise_number = normalize_id(
                 normalized_row.get("enterprise_number")

@@ -187,6 +187,51 @@ def test_build_records_without_contacts_file_falls_back_gracefully(tmp_path: Pat
     assert records[0]["email"] == ""
 
 
+def test_build_records_streams_activity_file_once(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / "enterprises.csv").write_text(
+        "enterprise_number;name;status;start_date;postal_code;city\n"
+        "0123456789;Acme;ACTIVE;2026-01-01;9400;Ninove\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "establishments.csv").write_text(
+        "enterprise_number;address;postal_code;city\n"
+        "0123456789;Main street 1;9400;Ninove\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "activities.csv").write_text(
+        "enterprise_number;nace_code\n0123456789;96.02\n",
+        encoding="utf-8",
+    )
+
+    original_iter_csv_rows = cli.iter_csv_rows
+    original_read_csv = cli.read_csv
+    activity_iter_calls = 0
+    activity_read_calls = 0
+
+    def counting_iter_csv_rows(*args: Any, **kwargs: Any):  # type: ignore[no-untyped-def]
+        nonlocal activity_iter_calls
+        path = args[0]
+        if isinstance(path, Path) and path.name in {"activity.csv", "activities.csv"}:
+            activity_iter_calls += 1
+        return original_iter_csv_rows(*args, **kwargs)
+
+    def counting_read_csv(*args: Any, **kwargs: Any):  # type: ignore[no-untyped-def]
+        nonlocal activity_read_calls
+        path = args[0]
+        if isinstance(path, Path) and path.name in {"activity.csv", "activities.csv"}:
+            activity_read_calls += 1
+        return original_read_csv(*args, **kwargs)
+
+    monkeypatch.setattr(cli, "iter_csv_rows", counting_iter_csv_rows)
+    monkeypatch.setattr(cli, "read_csv", counting_read_csv)
+
+    records = build_records(tmp_path, selected_postcodes={"9400"}, max_months=18)
+
+    assert len(records) == 1
+    assert activity_iter_calls == 1
+    assert activity_read_calls == 0
+
+
 def test_iter_csv_rows_falls_back_to_line_by_line_on_stream_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     csv_path = tmp_path / "broken.csv"
     csv_path.write_text(
