@@ -404,6 +404,7 @@ def load_addresses_by_establishment(
                 [
                     "establishment_number",
                     "establishmentnumber",
+                    "entitynumber",
                     "entity_number",
                 ],
             )
@@ -423,6 +424,32 @@ def load_addresses_by_establishment(
         }
 
     return addresses_by_establishment
+
+
+def _debug_postcode_diagnostics(postcode_samples: list[dict[str, Any]], *, verbose: bool) -> None:
+    if not verbose:
+        return
+
+    if not postcode_samples:
+        print("Verbose postcode diagnostics: no records available before postcode filter")
+        return
+
+    empty_count = sum(1 for item in postcode_samples if not item["computed_postcode"])
+    non_empty_count = len(postcode_samples) - empty_count
+    postcode_counts: dict[str, int] = {}
+    for item in postcode_samples:
+        postcode = item["computed_postcode"]
+        if postcode:
+            postcode_counts[postcode] = postcode_counts.get(postcode, 0) + 1
+
+    top_postcodes = sorted(postcode_counts.items(), key=lambda pair: pair[1], reverse=True)[:10]
+    sample_preview = postcode_samples[:3]
+
+    print(
+        "Verbose postcode diagnostics: "
+        f"total={len(postcode_samples)}, empty={empty_count}, non_empty={non_empty_count}, top10={top_postcodes}"
+    )
+    print(f"Verbose postcode diagnostics sample (first {len(sample_preview)}): {sample_preview}")
 
 
 def normalize_status(value: str) -> str:
@@ -690,11 +717,28 @@ def build_records(
     if verbose:
         print(f"Loaded counts: enterprises={len(enterprises)}, establishments={len(establishments)}, contacts={len(contacts_by_enterprise)}")
 
-    establishment_by_enterprise = {
-        normalize_id(row["enterprise_number"]): row
-        for row in establishments
-        if normalize_id(row.get("enterprise_number", ""))
-    }
+    establishment_by_enterprise: dict[str, dict[str, str]] = {}
+    for row in establishments:
+        enterprise_number = normalize_id(row.get("enterprise_number", ""))
+        if not enterprise_number:
+            continue
+
+        existing = establishment_by_enterprise.get(enterprise_number)
+        if not existing:
+            establishment_by_enterprise[enterprise_number] = row
+            continue
+
+        existing_has_postcode = bool(_get_postcode(existing))
+        candidate_has_postcode = bool(_get_postcode(row))
+        if candidate_has_postcode and not existing_has_postcode:
+            establishment_by_enterprise[enterprise_number] = row
+            continue
+
+        if candidate_has_postcode == existing_has_postcode:
+            existing_has_address = bool((existing.get("address") or "").strip())
+            candidate_has_address = bool((row.get("address") or "").strip())
+            if candidate_has_address and not existing_has_address:
+                establishment_by_enterprise[enterprise_number] = row
 
     activities_by_enterprise: dict[str, list[str]] = {}
     if not lite:
@@ -717,6 +761,7 @@ def build_records(
     join_with_establishment_kept = 0
     join_with_contact_kept = 0
     postcode_filter_kept = 0
+    postcode_samples: list[dict[str, Any]] = []
 
     for enterprise in enterprises:
         if not is_active_status(enterprise.get("status", "")):
@@ -734,7 +779,21 @@ def build_records(
         if contacts_by_enterprise.get(enterprise_number):
             join_with_contact_kept += 1
 
-        postal_code = _get_postcode(est) or _get_postcode(enterprise)
+        est_postal_code = _get_postcode(est)
+        enterprise_postal_code = _get_postcode(enterprise)
+        postal_code = est_postal_code or enterprise_postal_code
+
+        if verbose:
+            postcode_samples.append(
+                {
+                    "enterprise_number": enterprise_number,
+                    "establishment_number": normalize_id(est.get("establishment_number", "")),
+                    "computed_postcode": postal_code,
+                    "est_postal_code": est_postal_code,
+                    "enterprise_postal_code": enterprise_postal_code,
+                    "est_keys": sorted(est.keys())[:12],
+                }
+            )
         start_date = enterprise.get("start_date", "").strip()
         if not start_date:
             continue
@@ -807,6 +866,7 @@ def build_records(
         print(f"Verbose counters: after join with establishment={join_with_establishment_kept}")
         print(f"Verbose counters: after join with contact={join_with_contact_kept}")
         print(f"Verbose counters: after postcode filter={postcode_filter_kept}")
+        _debug_postcode_diagnostics(postcode_samples, verbose=verbose)
 
         with_establishment = sum(1 for enterprise in enterprises if establishment_by_enterprise.get(enterprise["enterprise_number"]))
         with_contact = sum(1 for enterprise in enterprises if contacts_by_enterprise.get(enterprise["enterprise_number"]))
