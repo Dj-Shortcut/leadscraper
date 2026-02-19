@@ -598,6 +598,31 @@ def test_build_records_maps_kbo_pascal_case_and_dotted_identifiers(tmp_path: Pat
     assert records[0]["website"] == "https://alpha.example"
 
 
+def test_build_records_populates_name_from_denomination_file(tmp_path: Path) -> None:
+    (tmp_path / "enterprise.csv").write_text(
+        "EnterpriseNumber;Status;StartDate\n"
+        "0207.441.527;ACTIVE;2026-01-01\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "establishment.csv").write_text(
+        "EnterpriseNumber;EstablishmentNumber;PostCode;MunicipalityNL;StreetNL;HouseNumber\n"
+        "0207.441.527;2.123.456.789;9400;Ninove;Centrumlaan;5\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "denomination.csv").write_text(
+        "EntityNumber;Denomination;TypeOfDenomination;Language\n"
+        "0207.441.527;Stad Ninove trade;002;NL\n"
+        "0207.441.527;Stad Ninove;001;NL\n",
+        encoding="utf-8",
+    )
+
+    records = build_records(tmp_path, selected_postcodes={"9400"}, max_months=10000, lite=True)
+
+    assert len(records) == 1
+    assert records[0]["enterprise_number"] == "0207441527"
+    assert records[0]["name"] == "Stad Ninove"
+
+
 def test_build_records_keeps_ac_and_active_statuses_and_skips_inactive(tmp_path: Path) -> None:
     (tmp_path / "enterprises.csv").write_text(
         "enterprise_number;name;status;start_date;postal_code;city\n"
