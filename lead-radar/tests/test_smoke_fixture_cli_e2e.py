@@ -158,3 +158,56 @@ def test_build_records_fast_lite_matches_default_count() -> None:
 
     assert len(fast) == len(baseline)
     assert set(fast[0].keys()) == set(baseline[0].keys())
+
+
+@pytest.mark.skipif(not HAS_PANDAS, reason="pandas not installed in test environment")
+def test_build_records_fast_matches_default_enterprise_set_and_start_date_range() -> None:
+    baseline = cli.build_records(FIXTURE_INPUT, selected_postcodes={"9400"}, max_months=18, min_score=0, limit=0)
+    fast = build_records_fast(
+        FIXTURE_INPUT,
+        selected_postcodes={"9400"},
+        max_months=18,
+        min_score=0,
+        limit=0,
+        chunksize=2,
+    )
+
+    baseline_ids = {row["enterprise_number"] for row in baseline}
+    fast_ids = {row["enterprise_number"] for row in fast}
+    assert fast_ids == baseline_ids
+
+    baseline_dates = [cli.parse_date(row["start_date"]) for row in baseline if cli.parse_date(row["start_date"])]
+    fast_dates = [cli.parse_date(row["start_date"]) for row in fast if cli.parse_date(row["start_date"])]
+
+    assert baseline_dates
+    assert fast_dates
+    assert min(fast_dates) == min(baseline_dates)
+    assert max(fast_dates) == max(baseline_dates)
+
+
+def test_cli_debug_stats_prints_summary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    output_file = tmp_path / "out.csv"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "cli",
+            "--input",
+            str(FIXTURE_INPUT),
+            "--output",
+            str(output_file),
+            "--postcodes",
+            "9400",
+            "--min-score",
+            "0",
+            "--debug-stats",
+        ],
+    )
+
+    cli.main()
+    out = capsys.readouterr().out
+
+    assert "Debug stats: total_records=" in out
+    assert "Debug stats: unique_enterprises=" in out
+    assert "Debug stats: min_start_date=" in out
+    assert "Debug stats: max_start_date=" in out
+    assert "Debug stats: sample_enterprise_numbers=" in out
