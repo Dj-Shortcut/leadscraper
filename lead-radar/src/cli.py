@@ -213,7 +213,16 @@ def normalize_key(name: str) -> str:
     value = "".join(ch for ch in value if not unicodedata.combining(ch))
     value = re.sub(r"[^a-z0-9]+", "_", value.strip().lower())
     value = re.sub(r"_+", "_", value)
-    return value.strip("_")
+    normalized = value.strip("_")
+
+    aliases = {
+        "zipcode": "postal_code",
+        "municipalitynl": "city",
+        "municipalityfr": "city_fr",
+        "streetnl": "street",
+        "housenumber": "house_number",
+    }
+    return aliases.get(normalized, normalized)
 
 
 def normalize_row_keys(row: dict[str, str]) -> dict[str, str]:
