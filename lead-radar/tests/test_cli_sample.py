@@ -694,3 +694,47 @@ def test_months_since_returns_none_for_invalid_or_placeholder_dates() -> None:
     assert cli.months_since("") is None
     assert cli.months_since("0000-00-00") is None
     assert cli.months_since("not-a-date") is None
+
+
+def test_build_records_postcode_filter_accepts_zipcode_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        cli,
+        "_load_enterprises",
+        lambda *_args, **_kwargs: [
+            {
+                "enterprise_number": "0123456789",
+                "name": "Zipcode Co",
+                "status": "ACTIVE",
+                "start_date": "2099-01-01",
+                "postal_code": "",
+                "city": "Ninove",
+                "address": "",
+                "website": "",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        cli,
+        "_load_establishments",
+        lambda *_args, **_kwargs: [
+            {
+                "enterprise_number": "0123456789",
+                "establishment_number": "2111222333",
+                "address": "Main street 1",
+                "postal_code": "",
+                "Zipcode": "9400",
+                "city": "Ninove",
+            }
+        ],
+    )
+    monkeypatch.setattr(cli, "load_addresses_by_establishment", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        cli,
+        "load_contacts_by_enterprise",
+        lambda *_args, **_kwargs: {},
+    )
+
+    records = build_records(tmp_path, selected_postcodes={"9400"}, max_months=10000, lite=True)
+
+    assert len(records) == 1
+    assert records[0]["enterprise_number"] == "0123456789"

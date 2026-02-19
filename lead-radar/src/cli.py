@@ -585,6 +585,20 @@ def parse_postcodes(raw: str) -> set[str]:
     return set(TARGET_POSTCODES)
 
 
+def _get_postcode(row: dict[str, Any]) -> str:
+    # try common normalized + raw variants
+    value = (
+        row.get("postal_code")
+        or row.get("postcode")
+        or row.get("zipcode")
+        or row.get("Zipcode")
+        or row.get("postalCode")
+    )
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 def score_record(
     age_months: int | None,
     sector_bucket: str,
@@ -701,7 +715,7 @@ def build_records(
         if contacts_by_enterprise.get(enterprise_number):
             join_with_contact_kept += 1
 
-        postal_code = (est.get("postal_code") or enterprise.get("postal_code") or "").strip()
+        postal_code = _get_postcode(est) or _get_postcode(enterprise)
         start_date = enterprise.get("start_date", "").strip()
         if not start_date:
             continue
