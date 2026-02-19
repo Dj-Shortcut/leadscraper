@@ -27,6 +27,7 @@ INPUT_FILE_CANDIDATES: dict[str, list[str]] = {
     "address": ["addresses.csv", "address.csv"],
     "activity": ["activities.csv", "activity.csv"],
     "contact": ["contacts.csv", "contact.csv"],
+    "denomination": ["denominations.csv", "denomination.csv"],
 }
 
 
@@ -581,6 +582,60 @@ def load_contacts_by_enterprise(
     return contacts_by_enterprise
 
 
+def load_denominations_by_enterprise(
+    input_dir: Path,
+    *,
+    encoding: str = "utf-8-sig",
+    max_bad_lines: int = 1000,
+) -> dict[str, str]:
+    try:
+        denomination_file = find_input_file(input_dir, INPUT_FILE_CANDIDATES["denomination"])
+    except FileNotFoundError:
+        return {}
+
+    # Prefer legal denominations (001). For ties, prefer Dutch/French/English and first seen.
+    language_priority = {
+        "nl": 0,
+        "n": 0,
+        "fr": 1,
+        "f": 1,
+        "en": 2,
+        "e": 2,
+        "de": 3,
+        "d": 3,
+    }
+    default_language_rank = 4
+    default_type_rank = 2
+    type_priority = {"001": 0, "1": 0, "002": 1, "2": 1}
+
+    selected: dict[str, tuple[int, int, int, str]] = {}
+    for index, raw_row in enumerate(iter_csv_rows(denomination_file, encoding=encoding, max_bad_lines=max_bad_lines)):
+        row = normalize_row_keys(raw_row)
+
+        enterprise_number = normalize_id(
+            row.get("entity_number") or row.get("enterprise_number") or row.get("entitynumber") or ""
+        )
+        denomination = (row.get("denomination") or row.get("name") or "").strip()
+        if not enterprise_number or not denomination:
+            continue
+
+        denomination_type = (row.get("type_of_denomination") or row.get("typeofdenomination") or "").strip()
+        language = (row.get("language") or row.get("language_code") or row.get("lang") or "").strip().lower()
+
+        ranking = (
+            type_priority.get(denomination_type, default_type_rank),
+            language_priority.get(language, default_language_rank),
+            index,
+            denomination,
+        )
+
+        previous = selected.get(enterprise_number)
+        if previous is None or ranking < previous:
+            selected[enterprise_number] = ranking
+
+    return {enterprise_number: ranked[3] for enterprise_number, ranked in selected.items()}
+
+
 def months_since(start_date: str) -> int | None:
     started = parse_date(start_date)
     if started is None:
@@ -713,6 +768,7 @@ def build_records(
         establishment["city"] = establishment.get("city") or address_data.get("city", "")
 
     contacts_by_enterprise = load_contacts_by_enterprise(resolved_input_dir, establishments)
+    denominations_by_enterprise = load_denominations_by_enterprise(resolved_input_dir)
 
     if verbose:
         print(f"Loaded counts: enterprises={len(enterprises)}, establishments={len(establishments)}, contacts={len(contacts_by_enterprise)}")
@@ -835,9 +891,11 @@ def build_records(
                 max_months=max_months,
             )
 
+        enterprise_name = (enterprise.get("name") or "").strip() or denominations_by_enterprise.get(enterprise_number, "")
+
         record = {
             "enterprise_number": enterprise_number,
-            "name": enterprise.get("name", "").strip(),
+            "name": enterprise_name,
             "status": normalize_status(enterprise.get("status", "")),
             "start_date": start_date,
             "address": (est.get("address") or enterprise.get("address") or "").strip(),
