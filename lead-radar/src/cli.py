@@ -479,10 +479,28 @@ def load_contacts_by_enterprise(
     return contacts_by_enterprise
 
 
-def months_since(start_date: str) -> int:
-    started = datetime.strptime(start_date, "%Y-%m-%d").date()
+def months_since(start_date: str) -> int | None:
+    started = parse_date(start_date)
+    if started is None:
+        return None
     today = date.today()
     return (today.year - started.year) * 12 + (today.month - started.month)
+
+
+def parse_date(date_str: str | None) -> date | None:
+    if date_str is None:
+        return None
+
+    cleaned = str(date_str).strip()
+    if not cleaned or cleaned in {"0", "0000-00-00", "00-00-0000", "0000/00/00"}:
+        return None
+
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(cleaned, fmt).date()
+        except ValueError:
+            continue
+    return None
 
 
 def parse_postcodes(raw: str) -> set[str]:
@@ -493,7 +511,7 @@ def parse_postcodes(raw: str) -> set[str]:
 
 
 def score_record(
-    age_months: int,
+    age_months: int | None,
     sector_bucket: str,
     has_nace: bool,
     has_phone: bool,
@@ -504,7 +522,7 @@ def score_record(
     score = 0
     reasons: list[str] = []
 
-    if age_months <= max_months:
+    if age_months is not None and age_months <= max_months:
         score += 30
         reasons.append("new<18m")
 
