@@ -37,6 +37,8 @@ Contactbestand verwacht velden volgens KBO-schema:
 
 > KBO `address.csv` gebruikt vaak kolomnamen zoals `Zipcode`; de CLI mapt dit intern naar `postal_code` (en o.a. `MunicipalityNL` naar `city`).
 
+> Postcodefiltering gebruikt **primair vestigingsadressen** uit `address.csv` gekoppeld via `EntityNumber` → `EstablishmentNumber` (fysieke locatie). Als vestigingspostcode ontbreekt, valt de CLI terug op enterprise-postcode. Waarden zoals `9400 Ninove` worden genormaliseerd naar `9400`.
+
 Voorbeeld:
 
 ```bash

@@ -307,6 +307,79 @@ def test_build_records_normalizes_zipcode_variants_for_postcode_filter(tmp_path:
     assert records[0]["postal_code"] == "9400"
 
 
+
+def test_load_addresses_by_establishment_supports_kbo_entitynumber_and_zipcode(tmp_path: Path) -> None:
+    (tmp_path / "address.csv").write_text(
+        "EntityNumber;TypeOfAddress;CountryNL;CountryFR;Zipcode;MunicipalityNL;MunicipalityFR;StreetNL;StreetFR;HouseNumber;Box;ExtraAddressInfo;DateStrikingOff\n"
+        "2.123.456.789;LEGAL;België;Belgique;9400 Ninove;Ninove;Ninove;Centrumlaan;Avenue Centre;5;B;;\n",
+        encoding="utf-8",
+    )
+
+    mapping = cli.load_addresses_by_establishment(tmp_path)
+
+    assert mapping["2123456789"]["postal_code"] == "9400 Ninove"
+    assert mapping["2123456789"]["city"] == "Ninove"
+    assert mapping["2123456789"]["address"] == "Centrumlaan 5 box B"
+
+
+def test_build_records_filters_with_realistic_kbo_address_schema(tmp_path: Path) -> None:
+    (tmp_path / "enterprise.csv").write_text(
+        "EnterpriseNumber;Status;StartDate;Denomination\n"
+        "0200.065.765;ACTIVE;2026-01-01;Ninove Co\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "establishment.csv").write_text(
+        "EnterpriseNumber;EstablishmentNumber\n"
+        "0200.065.765;2.123.456.789\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "address.csv").write_text(
+        "EntityNumber;TypeOfAddress;CountryNL;CountryFR;Zipcode;MunicipalityNL;MunicipalityFR;StreetNL;StreetFR;HouseNumber;Box;ExtraAddressInfo;DateStrikingOff\n"
+        "2.123.456.789;LEGAL;België;Belgique;9400 Ninove;Ninove;Ninove;Centrumlaan;Avenue Centre;5;B;;\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "contact.csv").write_text(
+        "EntityNumber;EntityContact;ContactType;Value\n"
+        "2.123.456.789;EST;EMAIL;hello@ninove.example\n",
+        encoding="utf-8",
+    )
+
+    records = build_records(tmp_path, selected_postcodes={"9400"}, max_months=10000, lite=True)
+
+    assert len(records) >= 1
+    assert records[0]["postal_code"] == "9400"
+
+
+def test_build_records_verbose_postcode_diagnostics(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "enterprise.csv").write_text(
+        "enterprise_number;name;status;start_date\n"
+        "0200362210;Beta;ACTIVE;2026-01-01\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "establishment.csv").write_text(
+        "enterprise_number;establishment_number\n"
+        "0200362210;2.123.456.789\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "address.csv").write_text(
+        "EntityNumber;Zipcode;MunicipalityNL;StreetNL;HouseNumber\n"
+        "2.123.456.789;9400 Ninove;Ninove;Main street;1\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "contact.csv").write_text(
+        "EntityNumber;EntityContact;ContactType;Value\n"
+        "2.123.456.789;EST;TEL;+3211223344\n",
+        encoding="utf-8",
+    )
+
+    records = build_records(tmp_path, selected_postcodes={"9400"}, max_months=10000, lite=True, verbose=True)
+
+    out = capsys.readouterr().out
+    assert records
+    assert "Verbose postcode diagnostics:" in out
+    assert "top10=" in out
+    assert "sample (first" in out
+
 def test_iter_csv_rows_falls_back_to_line_by_line_on_stream_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     csv_path = tmp_path / "broken.csv"
     csv_path.write_text(
