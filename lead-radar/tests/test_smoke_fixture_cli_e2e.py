@@ -4,6 +4,14 @@ from pathlib import Path
 import pytest
 
 from src import cli
+from src.fast_pipeline import build_records_fast
+
+try:
+    import pandas  # noqa: F401
+
+    HAS_PANDAS = True
+except ModuleNotFoundError:
+    HAS_PANDAS = False
 
 
 FIXTURE_INPUT = Path(__file__).parent / "fixtures" / "minimal_kbo"
@@ -63,3 +71,90 @@ def test_normalize_key_maps_kbo_aliases() -> None:
     assert cli.normalize_key("MunicipalityFR") == "city_fr"
     assert cli.normalize_key("StreetNL") == "street"
     assert cli.normalize_key("HouseNumber") == "house_number"
+
+
+@pytest.mark.skipif(not HAS_PANDAS, reason="pandas not installed in test environment")
+def test_build_records_fast_matches_default_headers_and_count() -> None:
+    baseline = cli.build_records(FIXTURE_INPUT, selected_postcodes={"9400"}, max_months=18, min_score=0, limit=0)
+    fast = build_records_fast(
+        FIXTURE_INPUT,
+        selected_postcodes={"9400"},
+        max_months=18,
+        min_score=0,
+        limit=0,
+        chunksize=2,
+    )
+
+    assert len(fast) == len(baseline)
+    assert set(fast[0].keys()) == set(baseline[0].keys())
+
+
+@pytest.mark.skipif(not HAS_PANDAS, reason="pandas not installed in test environment")
+def test_cli_fast_flag_produces_same_header_as_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    default_output = tmp_path / "default.csv"
+    fast_output = tmp_path / "fast.csv"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "cli",
+            "--input",
+            str(FIXTURE_INPUT),
+            "--output",
+            str(default_output),
+            "--postcodes",
+            "9400",
+            "--min-score",
+            "0",
+            "--limit",
+            "0",
+        ],
+    )
+    cli.main()
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "cli",
+            "--input",
+            str(FIXTURE_INPUT),
+            "--output",
+            str(fast_output),
+            "--postcodes",
+            "9400",
+            "--min-score",
+            "0",
+            "--limit",
+            "0",
+            "--fast",
+            "--chunksize",
+            "2",
+        ],
+    )
+    cli.main()
+
+    with default_output.open("r", encoding="utf-8", newline="") as handle:
+        default_rows = list(csv.DictReader(handle))
+    with fast_output.open("r", encoding="utf-8", newline="") as handle:
+        fast_rows = list(csv.DictReader(handle))
+
+    assert len(default_rows) == len(fast_rows)
+    assert default_rows and fast_rows
+    assert set(default_rows[0].keys()) == set(fast_rows[0].keys())
+
+
+@pytest.mark.skipif(not HAS_PANDAS, reason="pandas not installed in test environment")
+def test_build_records_fast_lite_matches_default_count() -> None:
+    baseline = cli.build_records(FIXTURE_INPUT, selected_postcodes={"9400"}, max_months=18, min_score=0, limit=0, lite=True)
+    fast = build_records_fast(
+        FIXTURE_INPUT,
+        selected_postcodes={"9400"},
+        max_months=18,
+        min_score=0,
+        limit=0,
+        lite=True,
+        chunksize=2,
+    )
+
+    assert len(fast) == len(baseline)
+    assert set(fast[0].keys()) == set(baseline[0].keys())

@@ -45,6 +45,8 @@ def parse_args() -> argparse.Namespace:
         help="Lite mode: skip activities.csv/NACE verwerking en bouw leads op basis van identiteit + contact",
     )
     parser.add_argument("--verbose", action="store_true", help="Toon detectie-info over inputbestanden")
+    parser.add_argument("--fast", action="store_true", help="Gebruik snelle postcode-pipeline met pandas chunking")
+    parser.add_argument("--chunksize", type=int, default=200_000, help="Chunkgrootte voor --fast pandas reads")
     parser.add_argument("--input-drive-zip", default="", help="Google Drive link naar ZIP met bron-CSV's")
     parser.add_argument(
         "--download-dir",
@@ -959,15 +961,29 @@ def main() -> None:
     selected_postcodes = parse_postcodes(args.postcodes)
 
     min_score = 0 if args.lite else args.min_score
-    records = build_records(
-        input_dir=input_dir,
-        selected_postcodes=selected_postcodes,
-        max_months=args.months,
-        min_score=min_score,
-        limit=args.limit,
-        verbose=args.verbose,
-        lite=args.lite,
-    )
+    if args.fast:
+        from .fast_pipeline import build_records_fast
+
+        records = build_records_fast(
+            input_dir=input_dir,
+            selected_postcodes=selected_postcodes,
+            max_months=args.months,
+            min_score=min_score,
+            limit=args.limit,
+            verbose=args.verbose,
+            lite=args.lite,
+            chunksize=args.chunksize,
+        )
+    else:
+        records = build_records(
+            input_dir=input_dir,
+            selected_postcodes=selected_postcodes,
+            max_months=args.months,
+            min_score=min_score,
+            limit=args.limit,
+            verbose=args.verbose,
+            lite=args.lite,
+        )
     total_records = len(records)
 
     export_leads(output_path=output_file, records=records, total_records=total_records)
