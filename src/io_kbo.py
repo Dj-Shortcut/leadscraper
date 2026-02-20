@@ -7,7 +7,6 @@ from typing import Iterable
 
 import pandas as pd
 
-
 DEFAULT_CANDIDATES: dict[str, list[str]] = {
     "enterprise_number": [
         "enterprise_number",
@@ -72,8 +71,7 @@ def detect_columns(df: pd.DataFrame, candidates: dict[str, Iterable[str]]) -> di
     Returns a mapping compatible with ``DataFrame.rename(columns=...)``.
     """
     normalized_candidates: dict[str, list[str]] = {
-        canonical: [_normalize_name(option) for option in options]
-        for canonical, options in candidates.items()
+        canonical: [_normalize_name(option) for option in options] for canonical, options in candidates.items()
     }
 
     rename_map: dict[str, str] = {}
@@ -104,9 +102,7 @@ def _resolve_input_path(path: str | Path, dataset_kind: str) -> Path:
         if any(pattern in filename for pattern in patterns):
             return file
 
-    raise FileNotFoundError(
-        f"No matching CSV found for '{dataset_kind}' under directory: {path_obj}"
-    )
+    raise FileNotFoundError(f"No matching CSV found for '{dataset_kind}' under directory: {path_obj}")
 
 
 def _load_dataset(path: str | Path, dataset_kind: str) -> pd.DataFrame:

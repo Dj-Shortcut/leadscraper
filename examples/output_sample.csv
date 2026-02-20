@@ -1,0 +1,2 @@
+enterprise_number,name,status,start_date,address,postal_code,city,phone,email,website,sector_bucket,score_total,source_files_version
+0123456789,Example BV,ACTIVE,2026-01-01,Stationsstraat 1,9400,Ninove,+32123456789,info@example.be,https://example.be,beauty,53,2026-02-18
