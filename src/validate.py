@@ -19,6 +19,6 @@ def validate_record(record: Mapping[str, Any]) -> None:
     assert POSTAL_CODE_PATTERN.fullmatch(postal_code), "postal_code moet exact 4 cijfers bevatten"
 
     score_total = int(record.get("score_total", -1))
-    assert SCORE_MIN <= score_total <= SCORE_MAX, (
-        f"score_total ({score_total}) valt buiten verwacht bereik {SCORE_MIN}-{SCORE_MAX}"
-    )
+    assert (
+        SCORE_MIN <= score_total <= SCORE_MAX
+    ), f"score_total ({score_total}) valt buiten verwacht bereik {SCORE_MIN}-{SCORE_MAX}"

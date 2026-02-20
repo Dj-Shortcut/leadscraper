@@ -103,8 +103,7 @@ def test_build_records_detects_single_subfolder_with_csv_files(
 
 def test_build_records_enriches_contacts_from_kbo_contact_schema(tmp_path: Path) -> None:
     (tmp_path / "enterprises.csv").write_text(
-        "enterprise_number;name;status;start_date;postal_code;city\n"
-        "0123456789;Acme;ACTIVE;2026-01-01;9400;Ninove\n",
+        "enterprise_number;name;status;start_date;postal_code;city\n" "0123456789;Acme;ACTIVE;2026-01-01;9400;Ninove\n",
         encoding="utf-8",
     )
     (tmp_path / "establishments.csv").write_text(
@@ -118,10 +117,10 @@ def test_build_records_enriches_contacts_from_kbo_contact_schema(tmp_path: Path)
     )
     (tmp_path / "contact.csv").write_text(
         "EntityNumber;EntityContact;ContactType;Value\n"
-        "\"2.987.654.321\";EST;TEL;+32123456789\n"
-        "\"2.987.654.321\";EST;EMAIL;hello@acme.example\n"
-        "\"0200.362.210\";ENT;WEB;https://ignored.example\n"
-        "\"2.987.654.321\";EST;FAX;+329999999\n",
+        '"2.987.654.321";EST;TEL;+32123456789\n'
+        '"2.987.654.321";EST;EMAIL;hello@acme.example\n'
+        '"0200.362.210";ENT;WEB;https://ignored.example\n'
+        '"2.987.654.321";EST;FAX;+329999999\n',
         encoding="utf-8",
     )
 
@@ -139,8 +138,7 @@ def test_build_records_enriches_contacts_from_kbo_contact_schema(tmp_path: Path)
 
 def test_build_records_maps_establishment_contact_to_enterprise(tmp_path: Path) -> None:
     (tmp_path / "enterprises.csv").write_text(
-        "enterprise_number;name;status;start_date;postal_code;city\n"
-        "0200362210;Beta;ACTIVE;2026-01-01;9400;Ninove\n",
+        "enterprise_number;name;status;start_date;postal_code;city\n" "0200362210;Beta;ACTIVE;2026-01-01;9400;Ninove\n",
         encoding="utf-8",
     )
     (tmp_path / "establishments.csv").write_text(
@@ -153,8 +151,7 @@ def test_build_records_maps_establishment_contact_to_enterprise(tmp_path: Path) 
         encoding="utf-8",
     )
     (tmp_path / "contact.csv").write_text(
-        "EntityNumber;EntityContact;ContactType;Value\n"
-        "\"2.123.456.789\";EST;WEB;https://beta.example\n",
+        "EntityNumber;EntityContact;ContactType;Value\n" '"2.123.456.789";EST;WEB;https://beta.example\n',
         encoding="utf-8",
     )
 
@@ -168,13 +165,11 @@ def test_build_records_maps_establishment_contact_to_enterprise(tmp_path: Path) 
 
 def test_build_records_without_contacts_file_falls_back_gracefully(tmp_path: Path) -> None:
     (tmp_path / "enterprises.csv").write_text(
-        "enterprise_number;name;status;start_date;postal_code;city\n"
-        "0123456789;Acme;ACTIVE;2026-01-01;9400;Ninove\n",
+        "enterprise_number;name;status;start_date;postal_code;city\n" "0123456789;Acme;ACTIVE;2026-01-01;9400;Ninove\n",
         encoding="utf-8",
     )
     (tmp_path / "establishments.csv").write_text(
-        "enterprise_number;address;postal_code;city\n"
-        "0123456789;Main street 1;9400;Ninove\n",
+        "enterprise_number;address;postal_code;city\n" "0123456789;Main street 1;9400;Ninove\n",
         encoding="utf-8",
     )
     (tmp_path / "activities.csv").write_text(
@@ -191,13 +186,11 @@ def test_build_records_without_contacts_file_falls_back_gracefully(tmp_path: Pat
 
 def test_build_records_streams_activity_file_once(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     (tmp_path / "enterprises.csv").write_text(
-        "enterprise_number;name;status;start_date;postal_code;city\n"
-        "0123456789;Acme;ACTIVE;2026-01-01;9400;Ninove\n",
+        "enterprise_number;name;status;start_date;postal_code;city\n" "0123456789;Acme;ACTIVE;2026-01-01;9400;Ninove\n",
         encoding="utf-8",
     )
     (tmp_path / "establishments.csv").write_text(
-        "enterprise_number;address;postal_code;city\n"
-        "0123456789;Main street 1;9400;Ninove\n",
+        "enterprise_number;address;postal_code;city\n" "0123456789;Main street 1;9400;Ninove\n",
         encoding="utf-8",
     )
     (tmp_path / "activities.csv").write_text(
@@ -236,8 +229,7 @@ def test_build_records_streams_activity_file_once(monkeypatch: pytest.MonkeyPatc
 
 def test_load_addresses_by_establishment_reads_address_file(tmp_path: Path) -> None:
     (tmp_path / "address.csv").write_text(
-        "establishment_number;street;house_number;postal_code;city\n"
-        "2.123.456.789;Main street;9;9400;Ninove\n",
+        "establishment_number;street;house_number;postal_code;city\n" "2.123.456.789;Main street;9;9400;Ninove\n",
         encoding="utf-8",
     )
 
@@ -254,18 +246,15 @@ def test_load_addresses_by_establishment_reads_address_file(tmp_path: Path) -> N
 
 def test_build_records_merges_address_data_into_establishment(tmp_path: Path) -> None:
     (tmp_path / "enterprises.csv").write_text(
-        "enterprise_number;name;status;start_date;postal_code;city\n"
-        "0123456789;Acme;AC;2026-01-01;;\n",
+        "enterprise_number;name;status;start_date;postal_code;city\n" "0123456789;Acme;AC;2026-01-01;;\n",
         encoding="utf-8",
     )
     (tmp_path / "establishments.csv").write_text(
-        "enterprise_number;establishment_number\n"
-        "0123456789;2.123.456.789\n",
+        "enterprise_number;establishment_number\n" "0123456789;2.123.456.789\n",
         encoding="utf-8",
     )
     (tmp_path / "address.csv").write_text(
-        "establishment_number;street;house_number;postal_code;city\n"
-        "2.123.456.789;Main street;9;9400;Ninove\n",
+        "establishment_number;street;house_number;postal_code;city\n" "2.123.456.789;Main street;9;9400;Ninove\n",
         encoding="utf-8",
     )
     (tmp_path / "activities.csv").write_text(
@@ -284,18 +273,15 @@ def test_build_records_merges_address_data_into_establishment(tmp_path: Path) ->
 
 def test_build_records_normalizes_zipcode_variants_for_postcode_filter(tmp_path: Path) -> None:
     (tmp_path / "enterprises.csv").write_text(
-        "enterprise_number;name;status;start_date;postal_code;city\n"
-        "0123456789;Acme;ACTIVE;2026-01-01;;Ninove\n",
+        "enterprise_number;name;status;start_date;postal_code;city\n" "0123456789;Acme;ACTIVE;2026-01-01;;Ninove\n",
         encoding="utf-8",
     )
     (tmp_path / "establishments.csv").write_text(
-        "enterprise_number;establishment_number\n"
-        "0123456789;2.123.456.789\n",
+        "enterprise_number;establishment_number\n" "0123456789;2.123.456.789\n",
         encoding="utf-8",
     )
     (tmp_path / "address.csv").write_text(
-        "establishment_number;Zipcode;city;street;house_number\n"
-        "2.123.456.789;9400 Ninove;Ninove;Main street;9\n",
+        "establishment_number;Zipcode;city;street;house_number\n" "2.123.456.789;9400 Ninove;Ninove;Main street;9\n",
         encoding="utf-8",
     )
     (tmp_path / "activities.csv").write_text(
@@ -307,7 +293,6 @@ def test_build_records_normalizes_zipcode_variants_for_postcode_filter(tmp_path:
 
     assert len(records) == 1
     assert records[0]["postal_code"] == "9400"
-
 
 
 def test_load_addresses_by_establishment_supports_kbo_entitynumber_and_zipcode(tmp_path: Path) -> None:
@@ -326,13 +311,11 @@ def test_load_addresses_by_establishment_supports_kbo_entitynumber_and_zipcode(t
 
 def test_build_records_filters_with_realistic_kbo_address_schema(tmp_path: Path) -> None:
     (tmp_path / "enterprise.csv").write_text(
-        "EnterpriseNumber;Status;StartDate;Denomination\n"
-        "0200.065.765;ACTIVE;2026-01-01;Ninove Co\n",
+        "EnterpriseNumber;Status;StartDate;Denomination\n" "0200.065.765;ACTIVE;2026-01-01;Ninove Co\n",
         encoding="utf-8",
     )
     (tmp_path / "establishment.csv").write_text(
-        "EnterpriseNumber;EstablishmentNumber\n"
-        "0200.065.765;2.123.456.789\n",
+        "EnterpriseNumber;EstablishmentNumber\n" "0200.065.765;2.123.456.789\n",
         encoding="utf-8",
     )
     (tmp_path / "address.csv").write_text(
@@ -341,8 +324,7 @@ def test_build_records_filters_with_realistic_kbo_address_schema(tmp_path: Path)
         encoding="utf-8",
     )
     (tmp_path / "contact.csv").write_text(
-        "EntityNumber;EntityContact;ContactType;Value\n"
-        "2.123.456.789;EST;EMAIL;hello@ninove.example\n",
+        "EntityNumber;EntityContact;ContactType;Value\n" "2.123.456.789;EST;EMAIL;hello@ninove.example\n",
         encoding="utf-8",
     )
 
@@ -354,23 +336,19 @@ def test_build_records_filters_with_realistic_kbo_address_schema(tmp_path: Path)
 
 def test_build_records_verbose_postcode_diagnostics(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (tmp_path / "enterprise.csv").write_text(
-        "enterprise_number;name;status;start_date\n"
-        "0200362210;Beta;ACTIVE;2026-01-01\n",
+        "enterprise_number;name;status;start_date\n" "0200362210;Beta;ACTIVE;2026-01-01\n",
         encoding="utf-8",
     )
     (tmp_path / "establishment.csv").write_text(
-        "enterprise_number;establishment_number\n"
-        "0200362210;2.123.456.789\n",
+        "enterprise_number;establishment_number\n" "0200362210;2.123.456.789\n",
         encoding="utf-8",
     )
     (tmp_path / "address.csv").write_text(
-        "EntityNumber;Zipcode;MunicipalityNL;StreetNL;HouseNumber\n"
-        "2.123.456.789;9400 Ninove;Ninove;Main street;1\n",
+        "EntityNumber;Zipcode;MunicipalityNL;StreetNL;HouseNumber\n" "2.123.456.789;9400 Ninove;Ninove;Main street;1\n",
         encoding="utf-8",
     )
     (tmp_path / "contact.csv").write_text(
-        "EntityNumber;EntityContact;ContactType;Value\n"
-        "2.123.456.789;EST;TEL;+3211223344\n",
+        "EntityNumber;EntityContact;ContactType;Value\n" "2.123.456.789;EST;TEL;+3211223344\n",
         encoding="utf-8",
     )
 
@@ -382,16 +360,14 @@ def test_build_records_verbose_postcode_diagnostics(tmp_path: Path, capsys: pyte
     assert "top10=" in out
     assert "sample (first" in out
 
+
 def test_iter_csv_rows_falls_back_to_line_by_line_on_stream_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     csv_path = tmp_path / "broken.csv"
     csv_path.write_text(
-        "enterprise_number;name\n"
-        "1;Acme\n"
-        "2;Broken;extra\n"
-        "3;Bravo\n",
+        "enterprise_number;name\n" "1;Acme\n" "2;Broken;extra\n" "3;Bravo\n",
         encoding="utf-8",
     )
 
@@ -424,9 +400,7 @@ def test_iter_csv_rows_falls_back_to_line_by_line_on_stream_error(
 def test_iter_csv_rows_stops_when_max_bad_lines_exceeded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     csv_path = tmp_path / "too_many_bad.csv"
     csv_path.write_text(
-        "enterprise_number;name\n"
-        "1;Acme\n"
-        "2;Broken;extra\n",
+        "enterprise_number;name\n" "1;Acme\n" "2;Broken;extra\n",
         encoding="utf-8",
     )
 
@@ -461,11 +435,9 @@ def test_iter_csv_rows_falls_back_to_latin_1_encoding(tmp_path: Path) -> None:
     assert rows == [{"enterprise_number": "1", "name": "café"}]
 
 
-
 def test_build_records_lite_mode_without_activities_file(tmp_path: Path) -> None:
     (tmp_path / "enterprises.csv").write_text(
-        "enterprise_number;name;status;start_date;postal_code;city\n"
-        "0200362210;Beta;ACTIVE;2026-01-01;9400;Ninove\n",
+        "enterprise_number;name;status;start_date;postal_code;city\n" "0200362210;Beta;ACTIVE;2026-01-01;9400;Ninove\n",
         encoding="utf-8",
     )
     (tmp_path / "establishments.csv").write_text(
@@ -475,9 +447,9 @@ def test_build_records_lite_mode_without_activities_file(tmp_path: Path) -> None
     )
     (tmp_path / "contact.csv").write_text(
         "EntityNumber;EntityContact;ContactType;Value\n"
-        "\"2.123.456.789\";EST;TEL;+3211223344\n"
-        "\"2.123.456.789\";EST;EMAIL;hello@beta.example\n"
-        "\"2.123.456.789\";EST;WEB;https://beta.example\n",
+        '"2.123.456.789";EST;TEL;+3211223344\n'
+        '"2.123.456.789";EST;EMAIL;hello@beta.example\n'
+        '"2.123.456.789";EST;WEB;https://beta.example\n',
         encoding="utf-8",
     )
 
@@ -492,8 +464,6 @@ def test_build_records_lite_mode_without_activities_file(tmp_path: Path) -> None
     assert records[0]["sector_bucket"] == ""
     assert records[0]["score_total"] == 0
     assert "lite_mode" in records[0]["score_reasons"]
-
-
 
 
 def test_build_records_limit_applies_after_postcode_and_month_filters(tmp_path: Path) -> None:
@@ -512,8 +482,7 @@ def test_build_records_limit_applies_after_postcode_and_month_filters(tmp_path: 
         encoding="utf-8",
     )
     (tmp_path / "activities.csv").write_text(
-        "enterprise_number;nace_code\n"
-        "0200362203;96021\n",
+        "enterprise_number;nace_code\n" "0200362203;96021\n",
         encoding="utf-8",
     )
 
@@ -527,18 +496,18 @@ def test_build_records_limit_applies_after_postcode_and_month_filters(tmp_path: 
 
     assert len(records) == 1
     assert records[0]["enterprise_number"] == "0200362203"
+
+
 def test_main_lite_mode_sets_min_score_to_zero(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     input_dir = tmp_path / "raw"
     input_dir.mkdir(parents=True)
 
     (input_dir / "enterprises.csv").write_text(
-        "enterprise_number;name;status;start_date;postal_code;city\n"
-        "0200362210;Beta;ACTIVE;2026-01-01;9400;Ninove\n",
+        "enterprise_number;name;status;start_date;postal_code;city\n" "0200362210;Beta;ACTIVE;2026-01-01;9400;Ninove\n",
         encoding="utf-8",
     )
     (input_dir / "establishments.csv").write_text(
-        "enterprise_number;address;postal_code;city\n"
-        "0200362210;Main street 2;9400;Ninove\n",
+        "enterprise_number;address;postal_code;city\n" "0200362210;Main street 2;9400;Ninove\n",
         encoding="utf-8",
     )
 
@@ -567,8 +536,7 @@ def test_build_records_maps_kbo_pascal_case_and_dotted_identifiers(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     (tmp_path / "enterprises.csv").write_text(
-        "EnterpriseNumber;Status;StartDate;Denomination\n"
-        "0123.456.789;ACTIVE;2026-01-01;KBO Alpha\n",
+        "EnterpriseNumber;Status;StartDate;Denomination\n" "0123.456.789;ACTIVE;2026-01-01;KBO Alpha\n",
         encoding="utf-8",
     )
     (tmp_path / "establishments.csv").write_text(
@@ -608,8 +576,7 @@ def test_build_records_maps_kbo_pascal_case_and_dotted_identifiers(
 
 def test_build_records_populates_name_from_denomination_file(tmp_path: Path) -> None:
     (tmp_path / "enterprise.csv").write_text(
-        "EnterpriseNumber;Status;StartDate\n"
-        "0207.441.527;ACTIVE;2026-01-01\n",
+        "EnterpriseNumber;Status;StartDate\n" "0207.441.527;ACTIVE;2026-01-01\n",
         encoding="utf-8",
     )
     (tmp_path / "establishment.csv").write_text(
@@ -647,10 +614,7 @@ def test_build_records_keeps_ac_and_active_statuses_and_skips_inactive(tmp_path:
         encoding="utf-8",
     )
     (tmp_path / "activities.csv").write_text(
-        "enterprise_number;nace_code\n"
-        "0200362201;96021\n"
-        "0200362202;96021\n"
-        "0200362203;96021\n",
+        "enterprise_number;nace_code\n" "0200362201;96021\n" "0200362202;96021\n" "0200362203;96021\n",
         encoding="utf-8",
     )
 
@@ -718,7 +682,9 @@ def test_resolve_input_dir_falls_back_to_local_input_when_drive_download_fails(
     )
 
     helper_calls = {"extract": 0}
-    monkeypatch.setattr(cli, "build_drive_download_url", lambda _: "https://drive.google.com/uc?export=download&id=abc123")
+    monkeypatch.setattr(
+        cli, "build_drive_download_url", lambda _: "https://drive.google.com/uc?export=download&id=abc123"
+    )
 
     def failing_download(url: str, destination: Path) -> Path:
         raise OSError("network blocked")
@@ -793,7 +759,9 @@ def test_resolve_input_dir_is_idempotent_when_output_dir_exists(
     existing_extracted_dir = tmp_path / "downloads" / "extracted"
     existing_extracted_dir.mkdir(parents=True, exist_ok=True)
 
-    monkeypatch.setattr(cli, "build_drive_download_url", lambda _: "https://drive.google.com/uc?export=download&id=abc123")
+    monkeypatch.setattr(
+        cli, "build_drive_download_url", lambda _: "https://drive.google.com/uc?export=download&id=abc123"
+    )
 
     def fake_download(url: str, destination: Path) -> Path:
         destination.parent.mkdir(parents=True, exist_ok=True)

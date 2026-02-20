@@ -15,7 +15,10 @@ def test_extract_google_drive_file_id_from_file_url() -> None:
 
 def test_build_drive_download_url() -> None:
     url = "https://drive.google.com/file/d/169qB_45xf57l_6drT1ScZuIPIQPUG2oH/view?usp=sharing"
-    assert build_drive_download_url(url) == "https://drive.google.com/uc?export=download&id=169qB_45xf57l_6drT1ScZuIPIQPUG2oH"
+    assert (
+        build_drive_download_url(url)
+        == "https://drive.google.com/uc?export=download&id=169qB_45xf57l_6drT1ScZuIPIQPUG2oH"
+    )
 
 
 def test_extract_google_sheet_id() -> None:

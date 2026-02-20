@@ -19,6 +19,6 @@ jobs:
       - name: Lint
         run: ruff check .
       - name: Format check
-        run: black --check .
+        run: black --required-version 24.10.0 --check .
       - name: Tests
         run: pytest
