@@ -248,7 +248,10 @@ def _scan_establishments(
         chunk = _normalize_chunk_columns(chunk)
         scanned_rows += len(chunk)
 
-        establishment_col = _first_present_column(chunk, ["establishment_number", "establishmentnumber", "entity_number"])
+        establishment_col = _first_present_column(
+            chunk,
+            ["establishment_number", "establishmentnumber", "entity_number"],
+        )
         if not establishment_col:
             continue
 
@@ -477,7 +480,9 @@ def build_records_fast(
                 max_months=max_months,
             )
 
-        enterprise_name = (enterprise.get("name") or "").strip() or denominations_by_enterprise.get(enterprise_number, "")
+        enterprise_name = (enterprise.get("name") or "").strip() or denominations_by_enterprise.get(
+            enterprise_number, ""
+        )
 
         record = {
             "enterprise_number": enterprise_number,

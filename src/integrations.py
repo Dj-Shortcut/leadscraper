@@ -6,10 +6,8 @@ import csv
 import re
 import zipfile
 from pathlib import Path
-from typing import Any
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
-
 
 _CHUNK_SIZE = 1024 * 1024
 
