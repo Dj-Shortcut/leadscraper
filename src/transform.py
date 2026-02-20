@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-
 # Rule-based NACE prefix mapping.
 # More specific prefixes must come before broader prefixes.
 _NACE_PREFIX_BUCKETS: tuple[tuple[str, str], ...] = (

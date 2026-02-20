@@ -145,7 +145,14 @@ def test_cli_fast_flag_produces_same_header_as_default(monkeypatch: pytest.Monke
 
 @pytest.mark.skipif(not HAS_PANDAS, reason="pandas not installed in test environment")
 def test_build_records_fast_lite_matches_default_count() -> None:
-    baseline = cli.build_records(FIXTURE_INPUT, selected_postcodes={"9400"}, max_months=18, min_score=0, limit=0, lite=True)
+    baseline = cli.build_records(
+        FIXTURE_INPUT,
+        selected_postcodes={"9400"},
+        max_months=18,
+        min_score=0,
+        limit=0,
+        lite=True,
+    )
     fast = build_records_fast(
         FIXTURE_INPUT,
         selected_postcodes={"9400"},
@@ -185,7 +192,11 @@ def test_build_records_fast_matches_default_enterprise_set_and_start_date_range(
     assert max(fast_dates) == max(baseline_dates)
 
 
-def test_cli_debug_stats_prints_summary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_debug_stats_prints_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     output_file = tmp_path / "out.csv"
     monkeypatch.setattr(
         "sys.argv",

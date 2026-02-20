@@ -8,7 +8,6 @@ import pandas as pd
 
 from transform import bucket_from_nace, ensure_bucket
 
-
 _SECTOR_BONUS_BUCKETS = {"beauty", "horeca", "health"}
 
 
