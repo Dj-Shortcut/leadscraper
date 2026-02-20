@@ -493,8 +493,7 @@ def find_input_file(input_dir: Path, candidates: list[str]) -> Path:
     expected = ", ".join(candidates)
     found = ", ".join(found_entries) if found_entries else "(geen bestanden gevonden)"
     raise FileNotFoundError(
-        f"Geen geldig inputbestand gevonden in '{input_dir}'. "
-        f"Verwacht één van: {expected}. Gevonden: {found}."
+        f"Geen geldig inputbestand gevonden in '{input_dir}'. " f"Verwacht één van: {expected}. Gevonden: {found}."
     )
 
 
@@ -675,11 +674,7 @@ def parse_date(date_str: str | None) -> date | None:
 
 
 def parse_postcodes(raw: str) -> set[str]:
-    parsed = {
-        normalized
-        for item in raw.split(",")
-        if (normalized := normalize_postal_code(item))
-    }
+    parsed = {normalized for item in raw.split(",") if (normalized := normalize_postal_code(item))}
     if parsed:
         return parsed
     return set(TARGET_POSTCODES)
@@ -953,14 +948,10 @@ def build_records(
         _debug_postcode_diagnostics(postcode_samples, verbose=verbose)
 
         with_establishment = sum(
-            1
-            for enterprise in enterprises
-            if establishment_by_enterprise.get(enterprise["enterprise_number"])
+            1 for enterprise in enterprises if establishment_by_enterprise.get(enterprise["enterprise_number"])
         )
         with_contact = sum(
-            1
-            for enterprise in enterprises
-            if contacts_by_enterprise.get(enterprise["enterprise_number"])
+            1 for enterprise in enterprises if contacts_by_enterprise.get(enterprise["enterprise_number"])
         )
         establishment_ratio = (with_establishment / len(enterprises)) * 100
         contact_ratio = (with_contact / len(enterprises)) * 100
@@ -1012,7 +1003,8 @@ def main() -> None:
         if runtime.city or runtime.query:
             lowered_city = runtime.city.lower()
             records = [
-                row for row in records
+                row
+                for row in records
                 if (not lowered_city or lowered_city in (row.get("city", "").lower()))
                 and (
                     not runtime.query
