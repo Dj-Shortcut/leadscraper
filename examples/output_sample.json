@@ -1,0 +1,17 @@
+[
+  {
+    "enterprise_number": "0123456789",
+    "name": "Example BV",
+    "status": "ACTIVE",
+    "start_date": "2026-01-01",
+    "address": "Stationsstraat 1",
+    "postal_code": "9400",
+    "city": "Ninove",
+    "phone": "+32123456789",
+    "email": "info@example.be",
+    "website": "https://example.be",
+    "sector_bucket": "beauty",
+    "score_total": 53,
+    "source_files_version": "2026-02-18"
+  }
+]

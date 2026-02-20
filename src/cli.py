@@ -11,7 +11,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-from .config import TARGET_POSTCODES
+from .config import TARGET_POSTCODES, build_runtime_config
 from .export import export_leads
 from .integrations import build_drive_download_url, download_file, extract_zip_file, upload_csv_to_google_sheet
 from .transform import bucket_from_nace
@@ -35,6 +35,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Lead Radar CSV pipeline")
     parser.add_argument("--input", required=True, help="Input map met bron-CSV's")
     parser.add_argument("--output", required=True, help="Output CSV pad")
+    parser.add_argument("--country", default="BE", help="Landcode (momenteel enkel BE)")
+    parser.add_argument("--city", default="", help="Filter op stad/gemeente")
+    parser.add_argument("--query", default="", help="Keyword filter op bedrijfsnaam of sector")
     parser.add_argument("--postcodes", default="", help="Komma-gescheiden lijst postcodes")
     parser.add_argument("--months", type=int, default=18, help="Maximale leeftijd in maanden")
     parser.add_argument("--min-score", type=int, default=40, help="Minimale score voor output")
@@ -64,6 +67,7 @@ def parse_args() -> argparse.Namespace:
         help="Google Sheet URL om output naar tabblad te pushen (vereist GOOGLE_SERVICE_ACCOUNT_JSON)",
     )
     parser.add_argument("--sheet-tab", default="Leads", help="Google Sheet tabbladnaam voor upload")
+    parser.add_argument("--dry-run", action="store_true", help="Valideer input en toon preview zonder outputbestand te schrijven")
     return parser.parse_args()
 
 
@@ -755,6 +759,8 @@ def build_records(
     limit: int | None = None,
     verbose: bool = False,
     lite: bool = False,
+    city: str = "",
+    query: str = "",
 ) -> list[dict[str, Any]]:
     resolved_input_dir = detect_input_dir(input_dir)
     if verbose:
@@ -918,6 +924,11 @@ def build_records(
             "score_reasons": score_reasons,
             "source_files_version": source_version,
         }
+        if city and city.lower() not in (record["city"] or "").lower():
+            continue
+        haystack = f"{record['name']} {record['sector_bucket']}".lower()
+        if query and query not in haystack:
+            continue
         if int(record["score_total"]) < min_score:
             continue
         validate_record(record)
@@ -961,44 +972,60 @@ def build_records(
 
 def main() -> None:
     args = parse_args()
+    try:
+        runtime = build_runtime_config(args)
+    except ValueError as err:
+        raise SystemExit(f"Configuration error: {err}") from err
     input_dir = resolve_input_dir(args)
-    output_file = Path(args.output)
-    selected_postcodes = parse_postcodes(args.postcodes)
+    selected_postcodes = parse_postcodes(runtime.postcodes)
 
-    min_score = 0 if args.lite else args.min_score
+    min_score = 0 if args.lite else runtime.min_score
     if args.fast:
         from .fast_pipeline import build_records_fast
 
         records = build_records_fast(
             input_dir=input_dir,
             selected_postcodes=selected_postcodes,
-            max_months=args.months,
+            max_months=runtime.months,
             min_score=min_score,
-            limit=args.limit,
+            limit=runtime.limit,
             verbose=args.verbose,
             lite=args.lite,
             chunksize=args.chunksize,
         )
+        if runtime.city or runtime.query:
+            lowered_city = runtime.city.lower()
+            records = [
+                row for row in records
+                if (not lowered_city or lowered_city in (row.get("city", "").lower()))
+                and (not runtime.query or runtime.query in f"{row.get('name', '')} {row.get('sector_bucket', '')}".lower())
+            ]
     else:
         records = build_records(
             input_dir=input_dir,
             selected_postcodes=selected_postcodes,
-            max_months=args.months,
+            max_months=runtime.months,
             min_score=min_score,
-            limit=args.limit,
+            limit=runtime.limit,
             verbose=args.verbose,
             lite=args.lite,
+            city=runtime.city,
+            query=runtime.query,
         )
     total_records = len(records)
 
     if args.debug_stats:
         _print_debug_stats(records)
 
-    export_leads(output_path=output_file, records=records, total_records=total_records)
+    if runtime.dry_run:
+        print(f"Dry run complete: {total_records} records would be written to {runtime.output}")
+        return
+
+    export_leads(output_path=runtime.output, records=records, total_records=total_records)
 
     if args.sheet_url:
         try:
-            upload_csv_to_google_sheet(sheet_url=args.sheet_url, csv_path=output_file, worksheet_name=args.sheet_tab)
+            upload_csv_to_google_sheet(sheet_url=args.sheet_url, csv_path=runtime.output, worksheet_name=args.sheet_tab)
             print(f"Uploaded leads to Google Sheet tab '{args.sheet_tab}'")
         except (RuntimeError, OSError) as err:
             print(f"WARNING: unable to upload to Google Sheet: {err}")

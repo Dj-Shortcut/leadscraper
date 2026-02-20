@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "leadscraper"
+version = "0.2.0"
+description = "Lead scraping and prioritization pipeline with country-provider extensibility"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Dj-Shortcut"}]
+dependencies = [
+  "pandas>=2.0",
+  "gspread>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "black>=24.0",
+  "ruff>=0.6",
+]
+
+[project.scripts]
+leadscraper = "src.cli:main"
+
+[tool.black]
+line-length = 120
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
