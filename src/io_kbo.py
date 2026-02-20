@@ -7,7 +7,6 @@ from typing import Iterable
 
 import pandas as pd
 
-
 DEFAULT_CANDIDATES: dict[str, list[str]] = {
     "enterprise_number": [
         "enterprise_number",

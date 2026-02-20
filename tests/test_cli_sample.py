@@ -9,7 +9,6 @@ from src.cli import build_records, find_input_file, iter_csv_rows
 from src.config import TARGET_POSTCODES
 from src.export import export_leads
 
-
 ALLOWED_BUCKETS = {"beauty", "horeca", "health", "retail", "service_trades", "other"}
 
 
@@ -72,7 +71,10 @@ def test_find_input_file_error_lists_expected_and_found(tmp_path: Path) -> None:
     assert "unexpected.csv" in message
 
 
-def test_build_records_detects_single_subfolder_with_csv_files(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_build_records_detects_single_subfolder_with_csv_files(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     input_root = tmp_path / "raw"
     detected = input_root / "2026-02-18"
     detected.mkdir(parents=True)
@@ -380,7 +382,10 @@ def test_build_records_verbose_postcode_diagnostics(tmp_path: Path, capsys: pyte
     assert "top10=" in out
     assert "sample (first" in out
 
-def test_iter_csv_rows_falls_back_to_line_by_line_on_stream_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_iter_csv_rows_falls_back_to_line_by_line_on_stream_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     csv_path = tmp_path / "broken.csv"
     csv_path.write_text(
         "enterprise_number;name\n"
@@ -557,7 +562,10 @@ def test_main_lite_mode_sets_min_score_to_zero(monkeypatch: pytest.MonkeyPatch, 
     assert "0200362210" in content
 
 
-def test_build_records_maps_kbo_pascal_case_and_dotted_identifiers(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_build_records_maps_kbo_pascal_case_and_dotted_identifiers(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     (tmp_path / "enterprises.csv").write_text(
         "EnterpriseNumber;Status;StartDate;Denomination\n"
         "0123.456.789;ACTIVE;2026-01-01;KBO Alpha\n",

@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 from collections import Counter
 from pathlib import Path
-from typing import Iterable, Mapping, Any
+from typing import Any, Iterable, Mapping
 
 OUTPUT_COLUMNS = [
     "enterprise_number",

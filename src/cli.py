@@ -17,7 +17,6 @@ from .integrations import build_drive_download_url, download_file, extract_zip_f
 from .transform import bucket_from_nace
 from .validate import validate_record
 
-
 LOGGER = logging.getLogger(__name__)
 LARGE_CSV_WARNING_BYTES = 1_000_000_000
 
@@ -67,7 +66,11 @@ def parse_args() -> argparse.Namespace:
         help="Google Sheet URL om output naar tabblad te pushen (vereist GOOGLE_SERVICE_ACCOUNT_JSON)",
     )
     parser.add_argument("--sheet-tab", default="Leads", help="Google Sheet tabbladnaam voor upload")
-    parser.add_argument("--dry-run", action="store_true", help="Valideer input en toon preview zonder outputbestand te schrijven")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Valideer input en toon preview zonder outputbestand te schrijven",
+    )
     return parser.parse_args()
 
 
@@ -784,7 +787,10 @@ def build_records(
     denominations_by_enterprise = load_denominations_by_enterprise(resolved_input_dir)
 
     if verbose:
-        print(f"Loaded counts: enterprises={len(enterprises)}, establishments={len(establishments)}, contacts={len(contacts_by_enterprise)}")
+        print(
+            f"Loaded counts: enterprises={len(enterprises)}, "
+            f"establishments={len(establishments)}, contacts={len(contacts_by_enterprise)}"
+        )
 
     establishment_by_enterprise: dict[str, dict[str, str]] = {}
     for row in establishments:
@@ -904,7 +910,9 @@ def build_records(
                 max_months=max_months,
             )
 
-        enterprise_name = (enterprise.get("name") or "").strip() or denominations_by_enterprise.get(enterprise_number, "")
+        enterprise_name = (enterprise.get("name") or "").strip() or denominations_by_enterprise.get(
+            enterprise_number, ""
+        )
 
         record = {
             "enterprise_number": enterprise_number,
@@ -944,8 +952,16 @@ def build_records(
         print(f"Verbose counters: after postcode filter={postcode_filter_kept}")
         _debug_postcode_diagnostics(postcode_samples, verbose=verbose)
 
-        with_establishment = sum(1 for enterprise in enterprises if establishment_by_enterprise.get(enterprise["enterprise_number"]))
-        with_contact = sum(1 for enterprise in enterprises if contacts_by_enterprise.get(enterprise["enterprise_number"]))
+        with_establishment = sum(
+            1
+            for enterprise in enterprises
+            if establishment_by_enterprise.get(enterprise["enterprise_number"])
+        )
+        with_contact = sum(
+            1
+            for enterprise in enterprises
+            if contacts_by_enterprise.get(enterprise["enterprise_number"])
+        )
         establishment_ratio = (with_establishment / len(enterprises)) * 100
         contact_ratio = (with_contact / len(enterprises)) * 100
         print(
@@ -998,7 +1014,10 @@ def main() -> None:
             records = [
                 row for row in records
                 if (not lowered_city or lowered_city in (row.get("city", "").lower()))
-                and (not runtime.query or runtime.query in f"{row.get('name', '')} {row.get('sector_bucket', '')}".lower())
+                and (
+                    not runtime.query
+                    or runtime.query in f"{row.get('name', '')} {row.get('sector_bucket', '')}".lower()
+                )
             ]
     else:
         records = build_records(

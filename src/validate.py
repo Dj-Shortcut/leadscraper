@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Mapping, Any
+from typing import Any, Mapping
 
 POSTAL_CODE_PATTERN = re.compile(r"^\d{4}$")
 SCORE_MIN = 0
